@@ -242,13 +242,22 @@ if (es) {
 
   es.onmessage({ data: JSON.stringify({ type: "turn", phase: "start", origin: "root" }) });
   await sleep(30);
-  check("turn start → curious 思考姿势", img.dataset.pose === "curious");
+  check("turn start → review 思考姿势", img.dataset.pose === "review");
   check("turn start → 思考气泡", /思考|干活|收到|明白/.test(bubble.textContent));
 
   es.onmessage({ data: JSON.stringify({ type: "turn", phase: "end", origin: "root" }) });
   await sleep(30);
-  check("turn end → happy 庆祝", img.dataset.pose === "happy");
+  check("turn end → happy/jump 庆祝", img.dataset.pose === "happy" || img.dataset.pose === "jump");
   check("turn end → 完成台词", /完成|收工|搞定|点赞/.test(bubble.textContent));
+
+  // 10) 新姿势：shy 精灵姿势 + jump CSS 姿势（pet_say mood）
+  es.onmessage({ data: JSON.stringify({ type: "say", text: "测 shy", mood: "shy" }) });
+  await sleep(30);
+  check("mood shy → shy 姿势", img.dataset.pose === "shy" && img.src.includes("data:image/png;base64"));
+  es.onmessage({ data: JSON.stringify({ type: "say", text: "测 jump", mood: "jump" }) });
+  await sleep(30);
+  check("mood jump → jump CSS 姿势类", pet.classList.contains("dsh-pet-pose-jump"));
+  check("mood jump → pose 记录为 jump", img.dataset.pose === "jump");
 }
 
 console.log(failures === 0 ? "\nSMOKE TEST PASSED" : `\nSMOKE TEST FAILED (${failures})`);

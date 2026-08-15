@@ -8,7 +8,7 @@ export const inject = ["webServer", "agents", "sessions", "tools"];
 
 /** 桌宠 SSE 端点（webServer exact 路由优先于 client-modules 的 /plugins 前缀）。 */
 const EVENTS_ENDPOINT = "/plugins/pet-events";
-const MOODS = ["idle", "happy", "wave", "sleepy", "curious"];
+const MOODS = ["idle", "happy", "wave", "sleepy", "curious", "shy", "surprised", "review", "jump", "spin", "shake"];
 
 function sseData(frame) {
 	return `data: ${JSON.stringify(frame)}\n\n`;

@@ -5,15 +5,25 @@ window.__ModuleLoader__.load({
 		var exports = module.exports;
 		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
 
-		// DeepSeek 小鲸鱼桌宠 v3 —— 纯 vanilla DOM 实现，不依赖任何平台模块。
+		// DeepSeek 小鲸鱼桌宠 v4 —— 纯 vanilla DOM 实现，不依赖任何平台模块。
 		// 互动：拖拽/长按撒娇/双击撒花/贴边挤压/悬停问候/打字偷看/随机冒泡/失焦打盹/右键菜单
 		// 链路：/plugins/pet-events SSE —— 模型 pet_say 命令说话 + 对话起止同步（思考中/完成）
+		// 姿势：精灵姿势 idle/happy/wave/sleepy/curious/shy/surprised/review + CSS 姿势 jump/spin/shake
 		var IMAGES = {
 			idle: "__B64_IDLE__",
 			happy: "__B64_HAPPY__",
 			wave: "__B64_WAVE__",
 			sleepy: "__B64_SLEEPY__",
-			curious: "__B64_CURIOUS__"
+			curious: "__B64_CURIOUS__",
+			shy: "__B64_SHY__",
+			surprised: "__B64_SURPRISED__",
+			review: "__B64_REVIEW__"
+		};
+		/** CSS 动画姿势（不换图，给 pet 根元素加临时类）。 */
+		var CSS_POSES = {
+			jump: { cls: "dsh-pet-pose-jump", ms: 1300 },
+			spin: { cls: "dsh-pet-pose-spin", ms: 900 },
+			shake: { cls: "dsh-pet-pose-shake", ms: 1100 }
 		};
 
 		// ── 台词池：小蓝鲸人设萌词（大肥鱼 / 吃白饭 / 摸鱼 / 主人 / 撒娇） ──
@@ -141,6 +151,12 @@ window.__ModuleLoader__.load({
 			"@keyframes dsh-pet-bounce{0%{transform:scale(1);}30%{transform:scale(.9) rotate(-3deg);}60%{transform:scale(1.06) rotate(2deg);}100%{transform:scale(1);}}",
 			"@keyframes dsh-pet-hug{0%,100%{transform:scale(1);}50%{transform:scale(.88) rotate(-5deg);}}",
 			"@keyframes dsh-pet-squish{0%{transform:scaleX(1);}40%{transform:scaleX(.82) scaleY(1.12);}100%{transform:scaleX(1);}}",
+			".dsh-pet-root.dsh-pet-pose-jump img.dsh-pet-img{animation:dsh-pet-jump .55s ease 2;}",
+			".dsh-pet-root.dsh-pet-pose-spin img.dsh-pet-img{animation:dsh-pet-spin .8s ease 1;}",
+			".dsh-pet-root.dsh-pet-pose-shake img.dsh-pet-img{animation:dsh-pet-shake .45s ease 2;}",
+			"@keyframes dsh-pet-jump{0%,100%{transform:translateY(0);}35%{transform:translateY(-28px) scale(1.04);}65%{transform:translateY(0);}}",
+			"@keyframes dsh-pet-spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}",
+			"@keyframes dsh-pet-shake{0%,100%{transform:translateX(0);}25%{transform:translateX(-7px) rotate(-3deg);}75%{transform:translateX(7px) rotate(3deg);}}",
 			".dsh-pet-bubble{position:absolute;bottom:calc(100% + 12px);right:-8px;max-width:250px;min-width:120px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#1e293b);border-radius:14px;padding:10px 14px;font-size:13px;line-height:1.55;box-shadow:0 10px 28px rgba(15,23,42,.18);border:1px solid var(--dsw-alias-border-l1,rgba(30,64,175,.08));opacity:0;transform:translateY(6px) scale(.96);transition:opacity .22s ease,transform .22s ease;pointer-events:none;white-space:normal;word-break:break-word;text-align:left;}",
 			".dsh-pet-bubble.dsh-pet-show{opacity:1;transform:translateY(0) scale(1);}",
 			".dsh-pet-bubble:after{content:\"\";position:absolute;top:100%;right:16px;border:9px solid transparent;border-top-color:var(--dsw-alias-bg-overlay,#fff);}",
@@ -225,6 +241,31 @@ window.__ModuleLoader__.load({
 			img.dataset.pose = pose;
 		}
 
+		/** 切换到任意姿势：精灵姿势换图；CSS 姿势给根元素加临时动画类。 */
+		function makeApplyPose(pet, img) {
+			var cssClasses = Object.keys(CSS_POSES).map(function (key) { return CSS_POSES[key].cls; });
+			var cssTimer = null;
+			function clearCssPoses() {
+				for (var i = 0; i < cssClasses.length; i++) pet.classList.remove(cssClasses[i]);
+				if (cssTimer !== null) { clearTimeout(cssTimer); cssTimer = null; }
+			}
+			return function applyPose(pose, stay) {
+				clearCssPoses();
+				var css = CSS_POSES[pose];
+				if (css !== void 0) {
+					pet.classList.add(css.cls);
+					cssTimer = setTimeout(function () {
+						pet.classList.remove(css.cls);
+						cssTimer = null;
+						if (!stay) setPetPose(img, "idle");
+					}, css.ms);
+					img.dataset.pose = pose;
+					return;
+				}
+				if (IMAGES[pose] !== void 0) setPetPose(img, pose);
+			};
+		}
+
 		function mountPet() {
 			if (typeof document === "undefined" || typeof window === "undefined") return;
 			injectStyle();
@@ -277,6 +318,7 @@ window.__ModuleLoader__.load({
 			var thinking = false;
 			var lastCelebrate = 0;
 			var drag = { active: false, moved: false, longPressed: false, startX: 0, startY: 0, left: 0, top: 0, downAt: 0 };
+			var applyPose = makeApplyPose(pet, img);
 
 			function say(text, ms) {
 				bubble.textContent = text;
@@ -307,12 +349,12 @@ window.__ModuleLoader__.load({
 			}
 
 			function showHappy(line) {
-				setPetPose(img, "happy");
+				applyPose("happy");
 				say(line || pick(HAPPY_LINES), 2600);
 				burst();
 				if (happyTimer !== null) clearTimeout(happyTimer);
 				happyTimer = setTimeout(function () {
-					setPetPose(img, "idle");
+					applyPose("idle");
 					schedulePose();
 				}, 2600);
 			}
@@ -320,7 +362,7 @@ window.__ModuleLoader__.load({
 			function goSleep() {
 				if (asleep) return;
 				asleep = true;
-				setPetPose(img, "sleepy");
+				applyPose("sleepy");
 				say("Zzz… 偷偷眯一会儿~", 0);
 				if (poseTimer !== null) clearTimeout(poseTimer);
 				if (wanderTimer !== null) clearTimeout(wanderTimer);
@@ -329,28 +371,29 @@ window.__ModuleLoader__.load({
 			function wakeUp() {
 				if (!asleep) return;
 				asleep = false;
-				setPetPose(img, "idle");
+				applyPose("idle");
 				say(pick(WAKE_LINES), 2600);
 				schedulePose();
 				scheduleWander();
 				scheduleIdleSleep();
 			}
 
-			/** 对话开始：进入思考状态（curious 姿势 + 常驻气泡）。 */
+			/** 对话开始：进入思考状态（review 审阅姿势 + 常驻气泡）。 */
 			function enterThinking() {
 				if (thinking) return;
 				thinking = true;
 				if (poseTimer !== null) clearTimeout(poseTimer);
 				if (wanderTimer !== null) clearTimeout(wanderTimer);
-				setPetPose(img, "curious");
+				applyPose("review");
 				say(pick(THINKING_LINES), 0);
 			}
 
-			/** 对话结束：庆祝一下，然后恢复日常。 */
+			/** 对话结束：庆祝一下（happy + 蹦跳），然后恢复日常。 */
 			function exitThinking() {
 				if (!thinking) return;
 				thinking = false;
-				setPetPose(img, "happy");
+				applyPose("happy");
+				applyPose("jump", true);
 				if (Date.now() - lastCelebrate > 8000) {
 					lastCelebrate = Date.now();
 					say(pick(COMPLETION_LINES), 2600);
@@ -359,7 +402,7 @@ window.__ModuleLoader__.load({
 				}
 				if (happyTimer !== null) clearTimeout(happyTimer);
 				happyTimer = setTimeout(function () {
-					setPetPose(img, "idle");
+					applyPose("idle");
 					schedulePose();
 					scheduleWander();
 				}, 2200);
@@ -369,10 +412,10 @@ window.__ModuleLoader__.load({
 			function handlePetFrame(frame) {
 				if (!frame || typeof frame !== "object") return;
 				if (frame.type === "say" && typeof frame.text === "string" && frame.text.length > 0) {
-					if (frame.mood && IMAGES[frame.mood]) {
-						setPetPose(img, frame.mood);
+					if (frame.mood && (IMAGES[frame.mood] || CSS_POSES[frame.mood])) {
+						applyPose(frame.mood);
 						setTimeout(function () {
-							if (!thinking && !asleep) setPetPose(img, "idle");
+							if (!thinking && !asleep) applyPose("idle");
 						}, 3000);
 					}
 					say(frame.text, 4200);
@@ -384,29 +427,33 @@ window.__ModuleLoader__.load({
 				}
 			}
 
-			/** 随机姿势状态机：wave / sleepy / idle。 */
+			/** 随机姿势状态机：wave / sleepy / shy / surprised / review / curious + CSS 姿势。 */
 			function schedulePose() {
 				if (asleep || thinking) return;
 				if (poseTimer !== null) clearTimeout(poseTimer);
 				poseTimer = setTimeout(function () {
 					if (drag.active || asleep || thinking) return;
 					var r = Math.random();
-					if (r < 0.3) {
-						setPetPose(img, "wave");
-						poseTimer = setTimeout(function () {
-							setPetPose(img, "idle");
-							schedulePose();
-						}, 2200);
-					} else if (r < 0.45) {
-						setPetPose(img, "sleepy");
-						say("鲸鲸有点困…", 2000);
-						poseTimer = setTimeout(function () {
-							setPetPose(img, "idle");
-							schedulePose();
-						}, 4200);
-					} else {
-						setPetPose(img, "idle");
+					var pose = "idle";
+					var stay = 0;
+					if (r < 0.18) { pose = "wave"; stay = 2200; }
+					else if (r < 0.3) { pose = "sleepy"; stay = 4200; say("鲸鲸有点困…", 2000); }
+					else if (r < 0.42) { pose = "shy"; stay = 2400; say("被主人盯着看，鲸鲸害羞啦～", 2200); }
+					else if (r < 0.52) { pose = "surprised"; stay = 2000; say("咦？！", 1600); }
+					else if (r < 0.6) { pose = "review"; stay = 2600; say("让鲸鲸审阅一下…", 2200); }
+					else if (r < 0.68) { pose = "curious"; stay = 2200; say("嗯？什么动静？", 1800); }
+					else if (r < 0.78) { pose = "jump"; stay = 1500; }
+					else if (r < 0.86) { pose = "shake"; stay = 1300; }
+					else if (r < 0.92) { pose = "spin"; stay = 1100; }
+					if (pose === "idle") {
+						applyPose("idle");
 						schedulePose();
+					} else {
+						applyPose(pose);
+						poseTimer = setTimeout(function () {
+							applyPose("idle");
+							schedulePose();
+						}, stay);
 					}
 				}, 16000 + Math.random() * 14000);
 			}
@@ -453,10 +500,10 @@ window.__ModuleLoader__.load({
 						say("回家啦～继续陪主人！");
 					} },
 					{ label: "换一个姿势", run: function () {
-						var poses = ["idle", "wave", "sleepy", "happy"];
+						var poses = ["idle", "wave", "sleepy", "happy", "shy", "surprised", "review", "curious", "jump", "spin", "shake"];
 						var next = pick(poses);
-						setPetPose(img, next);
-						say(next === "happy" ? "今天心情超好，主人摸摸～" : next === "sleepy" ? "困了…鲸鲸小憩一下~" : next === "wave" ? "嗨嗨～主人好！" : "继续陪主人干活！", 2200);
+						applyPose(next);
+						say(next === "happy" ? "今天心情超好，主人摸摸～" : next === "sleepy" ? "困了…鲸鲸小憩一下~" : next === "wave" ? "嗨嗨～主人好！" : next === "shy" ? "被主人看着，好害羞…" : next === "surprised" ? "哇！吓鲸鲸一跳！" : next === "review" ? "让鲸鲸审阅一下～" : next === "jump" ? "耶！蹦蹦跳跳！" : next === "spin" ? "转圈圈～头晕啦！" : next === "shake" ? "抖抖抖…好冷！" : next === "curious" ? "嗯？有什么好玩的？" : "继续陪主人干活！", 2200);
 					} },
 					{ label: "讲个冷笑话", run: function () {
 						say(pick(JOKES), 6000);
@@ -637,14 +684,14 @@ window.__ModuleLoader__.load({
 			});
 
 			pet.addEventListener("mouseenter", function () {
-				if (!drag.active && !asleep && !thinking && img.dataset.pose !== "happy") setPetPose(img, "wave");
+				if (!drag.active && !asleep && !thinking && img.dataset.pose !== "happy") applyPose("wave");
 				if (Date.now() - lastHoverSay > 60000) {
 					lastHoverSay = Date.now();
 					say(pick(HOVER_LINES), 2200);
 				}
 			});
 			pet.addEventListener("mouseleave", function () {
-				if (!drag.active && !asleep && !thinking && img.dataset.pose === "wave") setPetPose(img, "idle");
+				if (!drag.active && !asleep && !thinking && img.dataset.pose === "wave") applyPose("idle");
 			});
 
 			// ── 菜单智能关闭：点菜单外任意处（含宠物）、右键外部、Esc、滚动、窗口变化、失焦 ──

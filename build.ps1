@@ -5,7 +5,10 @@ $assets = Join-Path $root "assets\small"
 $template = Join-Path $root "client.template.js"
 $out = Join-Path $root "client.js"
 
-$map = @{ "idle" = "IDLE"; "happy" = "HAPPY"; "wave" = "WAVE"; "sleepy" = "SLEEPY"; "curious" = "CURIOUS" }
+$map = @{
+    "idle" = "IDLE"; "happy" = "HAPPY"; "wave" = "WAVE"; "sleepy" = "SLEEPY"; "curious" = "CURIOUS";
+    "shy" = "SHY"; "surprised" = "SURPRISED"; "review" = "REVIEW"
+}
 
 $text = Get-Content $template -Raw -Encoding UTF8
 foreach ($key in $map.Keys) {
