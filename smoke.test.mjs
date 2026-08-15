@@ -196,11 +196,22 @@ documentStub._listeners.keydown[0]({ key: "Escape" });
 await sleep(20);
 check("menu closes on Escape", !menu.classList.contains("dsh-pet-show"));
 
-// 滚动 → 收起
+// 滚动 → 收起（空闲状态）
 await menuOpen();
 documentStub._listeners.scroll[0]({});
 await sleep(20);
-check("menu closes on scroll", !menu.classList.contains("dsh-pet-show"));
+check("menu closes on scroll (idle)", !menu.classList.contains("dsh-pet-show"));
+
+// 模型运行中（thinking）滚动 → 不收起（对话流式输出自动滚动不能关菜单）
+esInstances[0].onmessage({ data: JSON.stringify({ type: "turn", phase: "start", origin: "root" }) });
+await sleep(30);
+await menuOpen();
+documentStub._listeners.scroll[0]({});
+await sleep(20);
+check("menu stays open on scroll (thinking)", menu.classList.contains("dsh-pet-show"));
+// 结束 thinking，避免影响后续用例
+esInstances[0].onmessage({ data: JSON.stringify({ type: "turn", phase: "end", origin: "root" }) });
+await sleep(30);
 
 // 点菜单项 → 收起 + 执行
 await menuOpen();

@@ -710,6 +710,8 @@ window.__ModuleLoader__.load({
 				if (ev.key === "Escape" || ev.key === "Esc") hideMenu();
 			});
 			document.addEventListener("scroll", function () {
+				// 模型运行中页面会自动滚动（对话流式输出），此时滚动不应关闭菜单
+				if (thinking) return;
 				hideMenu();
 			}, true);
 			window.addEventListener("resize", hideMenu);
