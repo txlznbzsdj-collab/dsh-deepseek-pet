@@ -1,0 +1,231 @@
+// dsh-deepseek-pet client.js 冒烟测试 v2：Node VM + DOM stub，
+// 覆盖长按撒娇、双击撒花、拖拽回弹、打字偷看、悬停问候、右键菜单、失焦打盹等新互动。
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+
+const bundle = readFileSync(new URL("./client.js", import.meta.url), "utf8");
+
+// ---- 最小 DOM stub ----
+function makeEl(tag) {
+  const el = {
+    tagName: tag.toUpperCase(),
+    children: [],
+    style: { setProperty(k, v) { this[k] = v; } },
+    dataset: {},
+    classList: {
+      _set: new Set(),
+      add(...c) { c.forEach((x) => this._set.add(x)); },
+      remove(...c) { c.forEach((x) => this._set.delete(x)); },
+      contains(c) { return this._set.has(c); },
+    },
+    attrs: {},
+    _listeners: {},
+    innerHTML: "",
+    textContent: "",
+    src: "",
+    alt: "",
+    draggable: false,
+    id: "",
+    title: "",
+    offsetWidth: 150,
+    offsetHeight: 200,
+    appendChild(child) { this.children.push(child); return child; },
+    append(...kids) { kids.forEach((k) => this.children.push(k)); },
+    setAttribute(k, v) { this.attrs[k] = String(v); },
+    getAttribute(k) { return this.attrs[k]; },
+    addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); },
+    remove() { const i = this.children.indexOf(this); if (i >= 0) this.children.splice(i, 1); },
+    getBoundingClientRect() { return { left: 10, top: 10, width: 150, height: 200 }; },
+    setPointerCapture() {},
+    releasePointerCapture() {},
+    contains(node) { return this === node || this.children.includes(node); },
+  };
+  Object.defineProperty(el, "className", {
+    get() { return [...this.classList._set].join(" "); },
+    set(v) { this.classList._set = new Set(String(v).split(/\s+/).filter(Boolean)); },
+  });
+  return el;
+}
+
+const byId = new Map();
+function registerAppend(parent) {
+  const orig = parent.appendChild.bind(parent);
+  parent.appendChild = (c) => { if (c.id) byId.set(c.id, c); return orig(c); };
+}
+const documentStub = {
+  body: null,
+  head: makeEl("head"),
+  hidden: false,
+  createElement(tag) { return makeEl(tag); },
+  querySelector() { return null; },
+  querySelectorAll() { return []; },
+  getElementById(id) { return byId.get(id) || null; },
+  addEventListener(type, fn) { (this._listeners ||= {})[type] ||= []; this._listeners[type].push(fn); },
+};
+registerAppend(documentStub.head);
+documentStub.body = makeEl("body");
+registerAppend(documentStub.body);
+
+const store = new Map();
+const localStorageStub = {
+  getItem: (k) => (store.has(k) ? store.get(k) : null),
+  setItem: (k, v) => store.set(k, String(v)),
+  removeItem: (k) => store.delete(k),
+};
+
+const windowStub = {
+  innerWidth: 1280,
+  innerHeight: 800,
+  addEventListener() {},
+  localStorage: localStorageStub,
+  __ModuleLoader__: { load(handoff) { this._lastFactory = handoff.factory; } },
+};
+
+// EventSource stub：捕获实例，测试 SSE 帧处理
+const esInstances = [];
+class FakeEventSource {
+  constructor(url) { this.url = url; this.onmessage = null; this.onerror = null; esInstances.push(this); }
+  close() {}
+}
+
+const sandbox = {
+  window: windowStub,
+  document: documentStub,
+  localStorage: localStorageStub,
+  EventSource: FakeEventSource,
+  setTimeout,
+  clearTimeout,
+  setInterval,
+  clearInterval,
+  console,
+  Symbol,
+  Object,
+  Math,
+  Number,
+  JSON,
+  Date,
+  Error,
+  String,
+  Array,
+  Promise,
+};
+sandbox.globalThis = sandbox;
+vm.createContext(sandbox);
+
+// 确定性随机：所有 pick 取第一项，概率判断恒为 true
+sandbox.Math.random = () => 0.1;
+
+let failures = 0;
+function check(name, cond) {
+  if (cond) console.log(`  ok  ${name}`);
+  else { failures++; console.error(`FAIL  ${name}`); }
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+vm.runInContext(bundle, sandbox, { filename: "client.js" });
+const factory = windowStub.__ModuleLoader__._lastFactory;
+check("factory registered", typeof factory === "function");
+
+let modExports;
+try {
+  modExports = factory((spec) => { throw new Error("require called: " + spec); });
+  check("factory materialized", true);
+} catch (e) {
+  check("factory materialized: " + e.message, false);
+}
+
+modExports.apply({});
+await sleep(60);
+
+const pet = byId.get("dsh-pet-root");
+const bubble = pet.children.find((c) => c.className.includes("dsh-pet-bubble"));
+const img = pet.children.find((c) => c.tagName === "IMG");
+check("pet mounted", !!pet);
+check("bubble present", !!bubble);
+check("img present with base64 src", !!img && img.src.startsWith("data:image/png;base64,"));
+check("style injected with new animations", documentStub.head.children.some((c) =>
+  c.tagName === "STYLE" && c.textContent.includes("dsh-pet-burst") && c.textContent.includes("dsh-pet-idle")));
+
+const pd = (x, y) => pet._listeners.pointerdown[0]({ button: 0, clientX: x, clientY: y, pointerId: 1 });
+const pm = (x, y) => pet._listeners.pointermove[0]({ clientX: x, clientY: y });
+const pu = (x, y) => pet._listeners.pointerup[0]({ button: 0, clientX: x, clientY: y, pointerId: 1 });
+
+// 1) 单击 → 气泡（人设萌词：主人/大肥鱼/摸鱼/鲸）
+pd(100, 100); pm(101, 101); pu(101, 101);
+await sleep(320);
+check("single click → bubble (人设萌词)", bubble.classList.contains("dsh-pet-show") && /主人|大肥鱼|摸鱼|鲸|吃白饭|女仆/.test(bubble.textContent));
+
+// 2) 长按 700ms → 撒娇台词；松手不触发双击
+pd(200, 200);
+await sleep(850);
+check("long press → 撒娇台词", bubble.textContent.includes("蹭蹭") || bubble.textContent.includes("揉我") || bubble.textContent.includes("摸鱼鱼"));
+pu(200, 200);
+await sleep(50);
+check("long press release → 不触发 happy", img.dataset.pose !== "happy");
+
+// 3) 拖拽 → 位置变化 + bounce
+const beforeLeft = pet.style.left;
+pd(300, 300);
+pm(500, 420);
+pu(500, 420);
+check("drag → position changed", pet.style.left !== beforeLeft);
+check("drag → bounce class added", pet.classList.contains("dsh-pet-bounce"));
+
+// 4) 悬停问候
+pet._listeners.mouseenter[0]({});
+await sleep(30);
+check("hover → wave pose", img.dataset.pose === "wave");
+check("hover → 问候语", /哈喽|你来啦|找我有事|看看我/.test(bubble.textContent));
+
+// 5) 右键菜单 → 7 项
+pet._listeners.contextmenu[0]({ preventDefault() {}, clientX: 500, clientY: 300 });
+await sleep(30);
+const menu = byId.get("dsh-pet-menu");
+check("menu open", menu.classList.contains("dsh-pet-show"));
+check("menu has 8 items", menu.children.length === 8);
+
+// 6) 打字偷看
+documentStub._listeners.keydown[0]({ target: { tagName: "TEXTAREA" } });
+await sleep(50);
+check("keydown in textarea → 偷看台词", bubble.classList.contains("dsh-pet-show") && /主人|鲸|偷偷|康康|手速|键盘/.test(bubble.textContent));
+
+// 7) 双击 → happy 姿势 + 撒花粒子
+const beforeParticles = pet.children.filter((c) => c.className.includes("dsh-pet-particle")).length;
+pd(100, 100); pu(100, 100); pd(100, 100); pu(100, 100);
+await sleep(50);
+const particles = pet.children.filter((c) => c.className.includes("dsh-pet-particle")).length;
+check("double click → happy pose", img.dataset.pose === "happy");
+check("double click → burst particles", particles > beforeParticles);
+
+// 8) 失焦 → 打盹；回来 → 唤醒
+documentStub.hidden = true;
+documentStub._listeners.visibilitychange[0]({});
+await sleep(30);
+check("hidden → sleepy pose", img.dataset.pose === "sleepy");
+documentStub.hidden = false;
+documentStub._listeners.visibilitychange[0]({});
+await sleep(30);
+check("visible → wake idle", img.dataset.pose === "idle");
+
+// 9) SSE 链路：pet_say 命令 + 对话起止同步
+const es = esInstances[0];
+check("EventSource connected to /plugins/pet-events", !!es && es.url === "/plugins/pet-events");
+if (es) {
+  es.onmessage({ data: JSON.stringify({ type: "say", text: "主人加油！", mood: "happy" }) });
+  await sleep(30);
+  check("say frame → bubble 显示命令文本", bubble.textContent === "主人加油！" && bubble.classList.contains("dsh-pet-show"));
+  check("say frame → mood 姿势", img.dataset.pose === "happy");
+
+  es.onmessage({ data: JSON.stringify({ type: "turn", phase: "start", origin: "root" }) });
+  await sleep(30);
+  check("turn start → curious 思考姿势", img.dataset.pose === "curious");
+  check("turn start → 思考气泡", /思考|干活|收到|明白/.test(bubble.textContent));
+
+  es.onmessage({ data: JSON.stringify({ type: "turn", phase: "end", origin: "root" }) });
+  await sleep(30);
+  check("turn end → happy 庆祝", img.dataset.pose === "happy");
+  check("turn end → 完成台词", /完成|收工|搞定|点赞/.test(bubble.textContent));
+}
+
+console.log(failures === 0 ? "\nSMOKE TEST PASSED" : `\nSMOKE TEST FAILED (${failures})`);
+process.exit(failures === 0 ? 0 : 1);

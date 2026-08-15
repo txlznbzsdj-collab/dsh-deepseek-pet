@@ -1,0 +1,7 @@
+# 构建产物（由 build.ps1 从 assets/ 生成）
+client.js
+
+# 依赖 / 本地杂项
+node_modules/
+*.log
+.DS_Store

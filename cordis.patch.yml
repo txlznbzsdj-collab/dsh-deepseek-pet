@@ -1,0 +1,8 @@
+# dsh-deepseek-pet bundle patch.
+#
+# 一个 host 侧空行：让本包成为 cordis loader entry（dsh-client-modules 只扫描
+# ACTIVE loader entry 里声明 dsh.client 的包），从而把浏览器端 client.js
+# 编入 window.__DSH_BOOT__ 并挂到 /plugins/dsh-deepseek-pet/client.js。
+- insert:
+    - id: deepseek-pet
+      name: dsh-deepseek-pet
