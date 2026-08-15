@@ -287,6 +287,7 @@ window.__ModuleLoader__.load({
 			var img = document.createElement("img");
 			img.className = "dsh-pet-img";
 			img.src = IMAGES.idle;
+			img.dataset.pose = "idle";
 			img.alt = "DeepSeek 小鲸鱼";
 			img.draggable = false;
 
@@ -685,7 +686,8 @@ window.__ModuleLoader__.load({
 			});
 
 			pet.addEventListener("mouseenter", function () {
-				if (!drag.active && !asleep && !thinking && img.dataset.pose !== "happy") applyPose("wave");
+				// 只在空闲时打招呼：正在做动作（转圈/蹦跳/害羞等）时悬停不打断
+				if (!drag.active && !asleep && !thinking && img.dataset.pose === "idle") applyPose("wave");
 				if (Date.now() - lastHoverSay > 60000) {
 					lastHoverSay = Date.now();
 					say(pick(HOVER_LINES), 2200);

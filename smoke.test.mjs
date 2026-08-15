@@ -269,6 +269,18 @@ if (es) {
   await sleep(30);
   check("mood jump → jump CSS 姿势类", pet.classList.contains("dsh-pet-pose-jump"));
   check("mood jump → pose 记录为 jump", img.dataset.pose === "jump");
+
+  // 11) 动作中悬停 → 不打断（转圈进行中悬停，姿势不被重置）
+  es.onmessage({ data: JSON.stringify({ type: "say", text: "测 spin", mood: "spin" }) });
+  await sleep(30);
+  check("mood spin → spin 姿势", img.dataset.pose === "spin");
+  pet._listeners.mouseenter[0]({});
+  await sleep(20);
+  check("hover during spin → 姿势保持 spin（不被重置为 wave）", img.dataset.pose === "spin");
+  check("hover during spin → spin 动画类仍在", pet.classList.contains("dsh-pet-pose-spin"));
+  // 等 spin 完成自动回 idle
+  await sleep(1000);
+  check("spin 完成后回 idle", img.dataset.pose === "idle");
 }
 
 console.log(failures === 0 ? "\nSMOKE TEST PASSED" : `\nSMOKE TEST FAILED (${failures})`);
