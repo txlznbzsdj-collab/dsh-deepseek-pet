@@ -139,9 +139,10 @@ window.__ModuleLoader__.load({
 		];
 
 		var CSS = [
-			".dsh-pet-root{position:fixed;right:24px;bottom:24px;z-index:2147483000;width:150px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;filter:drop-shadow(0 6px 14px rgba(30,64,175,.25));}",
-			".dsh-pet-root.dsh-pet-dragging{cursor:grabbing;}",
-			".dsh-pet-root img.dsh-pet-img{width:100%;height:auto;display:block;pointer-events:none;animation:dsh-pet-idle 3.6s ease-in-out infinite;transform-origin:50% 90%;}",
+			".dsh-pet-root{position:fixed;right:24px;bottom:24px;z-index:2147483000;width:150px;cursor:grab;user-select:none;-webkit-user-select:none;touch-action:none;filter:drop-shadow(0 6px 14px rgba(30,64,175,.25));transition:transform .3s cubic-bezier(.34,1.56,.64,1);}",
+			".dsh-pet-root:hover{transform:scale(1.06);}",
+			".dsh-pet-root.dsh-pet-dragging,.dsh-pet-root.dsh-pet-dragging:hover{transform:none;cursor:grabbing;}",
+			".dsh-pet-root img.dsh-pet-img{width:100%;height:170px;object-fit:contain;display:block;pointer-events:none;animation:dsh-pet-idle 3.6s ease-in-out infinite;transform-origin:50% 90%;}",
 			".dsh-pet-root.dsh-pet-dragging img.dsh-pet-img{animation:dsh-pet-drag-tilt .18s ease-out infinite alternate;}",
 			".dsh-pet-root.dsh-pet-bounce img.dsh-pet-img{animation:dsh-pet-bounce .5s ease;}",
 			".dsh-pet-root.dsh-pet-hug img.dsh-pet-img{animation:dsh-pet-hug .6s ease;}",
@@ -166,10 +167,10 @@ window.__ModuleLoader__.load({
 			".dsh-pet-menu.dsh-pet-show{display:block;}",
 			".dsh-pet-menu-item{padding:9px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;}",
 			".dsh-pet-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover,#eef2ff);}",
-			".dsh-pet-hidden-btn{position:fixed;right:22px;bottom:22px;z-index:2147483000;width:46px;height:46px;border-radius:50%;background:var(--dsw-alias-bg-overlay,#fff);box-shadow:0 8px 20px rgba(15,23,42,.2);display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;border:1px solid var(--dsw-alias-border-l1,rgba(30,64,175,.1));}",
+			".dsh-pet-hidden-btn{position:fixed;right:22px;bottom:22px;z-index:2147483000;width:46px;height:46px;border-radius:50%;background:var(--dsw-alias-bg-overlay,#fff);box-shadow:0 8px 20px rgba(15,23,42,.2);display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;border:1px solid var(--dsw-alias-border-l1,rgba(30,64,175,.1));transition:transform .2s ease;}",
 			".dsh-pet-hidden-btn.dsh-pet-show{display:flex;}",
 			".dsh-pet-hidden-btn:hover{transform:scale(1.08);}",
-			"@media (prefers-reduced-motion: reduce){.dsh-pet-root img.dsh-pet-img{animation:none;}}"
+			"@media (prefers-reduced-motion: reduce){.dsh-pet-root img.dsh-pet-img{animation:none;}.dsh-pet-root,.dsh-pet-root:hover{transform:none;transition:none;}.dsh-pet-hidden-btn{transition:none;}}"
 		].join("\n");
 
 		var TAG_ID = "dsh-deepseek-pet/style";
