@@ -647,10 +647,25 @@ window.__ModuleLoader__.load({
 				if (!drag.active && !asleep && !thinking && img.dataset.pose === "wave") setPetPose(img, "idle");
 			});
 
+			// ── 菜单智能关闭：点菜单外任意处（含宠物）、右键外部、Esc、滚动、窗口变化、失焦 ──
 			document.addEventListener("pointerdown", function (ev) {
 				if (!menu.classList.contains("dsh-pet-show")) return;
-				if (!menu.contains(ev.target) && !pet.contains(ev.target)) hideMenu();
+				// 点菜单内部保留（菜单项自己的 click 负责收起）；其余一律收起，
+				// 包括点在宠物上 —— 先收起菜单再继续宠物交互。
+				if (!menu.contains(ev.target)) hideMenu();
 			});
+			document.addEventListener("contextmenu", function (ev) {
+				// 右键来源是宠物时由宠物自己的 contextmenu 负责打开/重定位，不在此关闭
+				if (menu.classList.contains("dsh-pet-show") && !menu.contains(ev.target) && !pet.contains(ev.target)) hideMenu();
+			});
+			document.addEventListener("keydown", function (ev) {
+				if (ev.key === "Escape" || ev.key === "Esc") hideMenu();
+			});
+			document.addEventListener("scroll", function () {
+				hideMenu();
+			}, true);
+			window.addEventListener("resize", hideMenu);
+			window.addEventListener("blur", hideMenu);
 
 			// 打字偷看：用户在输入框敲键盘时偶尔冒一句（节流 25s）
 			document.addEventListener("keydown", function (ev) {

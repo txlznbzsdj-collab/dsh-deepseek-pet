@@ -34,6 +34,7 @@ function makeEl(tag) {
     setAttribute(k, v) { this.attrs[k] = String(v); },
     getAttribute(k) { return this.attrs[k]; },
     addEventListener(type, fn) { (this._listeners[type] ||= []).push(fn); },
+    click() { for (const fn of (this._listeners.click || [])) fn(); },
     remove() { const i = this.children.indexOf(this); if (i >= 0) this.children.splice(i, 1); },
     getBoundingClientRect() { return { left: 10, top: 10, width: 150, height: 200 }; },
     setPointerCapture() {},
@@ -177,15 +178,38 @@ await sleep(30);
 check("hover → wave pose", img.dataset.pose === "wave");
 check("hover → 问候语", /哈喽|你来啦|找我有事|看看我/.test(bubble.textContent));
 
-// 5) 右键菜单 → 7 项
-pet._listeners.contextmenu[0]({ preventDefault() {}, clientX: 500, clientY: 300 });
-await sleep(30);
+// 5) 右键菜单 → 8 项 + 智能关闭
+const menuOpen = () => { pet._listeners.contextmenu[0]({ preventDefault() {}, clientX: 500, clientY: 300 }); return sleep(30); };
+await menuOpen();
 const menu = byId.get("dsh-pet-menu");
 check("menu open", menu.classList.contains("dsh-pet-show"));
 check("menu has 8 items", menu.children.length === 8);
 
-// 6) 打字偷看
-documentStub._listeners.keydown[0]({ target: { tagName: "TEXTAREA" } });
+// 点菜单外（宠物/页面）→ 收起
+documentStub._listeners.pointerdown[0]({ target: {} });
+await sleep(20);
+check("menu closes on outside click", !menu.classList.contains("dsh-pet-show"));
+
+// Esc → 收起
+await menuOpen();
+documentStub._listeners.keydown[0]({ key: "Escape" });
+await sleep(20);
+check("menu closes on Escape", !menu.classList.contains("dsh-pet-show"));
+
+// 滚动 → 收起
+await menuOpen();
+documentStub._listeners.scroll[0]({});
+await sleep(20);
+check("menu closes on scroll", !menu.classList.contains("dsh-pet-show"));
+
+// 点菜单项 → 收起 + 执行
+await menuOpen();
+menu.children[0].click();
+await sleep(30);
+check("menu item click closes", !menu.classList.contains("dsh-pet-show"));
+
+// 6) 打字偷看（keydown[1] 是打字监听，keydown[0] 是 Esc 监听）
+documentStub._listeners.keydown[1]({ target: { tagName: "TEXTAREA" } });
 await sleep(50);
 check("keydown in textarea → 偷看台词", bubble.classList.contains("dsh-pet-show") && /主人|鲸|偷偷|康康|手速|键盘/.test(bubble.textContent));
 
