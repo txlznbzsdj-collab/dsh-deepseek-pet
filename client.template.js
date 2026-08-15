@@ -141,17 +141,16 @@ window.__ModuleLoader__.load({
 			"@keyframes dsh-pet-bounce{0%{transform:scale(1);}30%{transform:scale(.9) rotate(-3deg);}60%{transform:scale(1.06) rotate(2deg);}100%{transform:scale(1);}}",
 			"@keyframes dsh-pet-hug{0%,100%{transform:scale(1);}50%{transform:scale(.88) rotate(-5deg);}}",
 			"@keyframes dsh-pet-squish{0%{transform:scaleX(1);}40%{transform:scaleX(.82) scaleY(1.12);}100%{transform:scaleX(1);}}",
-			".dsh-pet-bubble{position:absolute;bottom:calc(100% + 12px);right:-8px;max-width:250px;min-width:120px;background:#fff;color:#1e293b;border-radius:14px;padding:10px 14px;font-size:13px;line-height:1.55;box-shadow:0 10px 28px rgba(15,23,42,.18);border:1px solid rgba(30,64,175,.08);opacity:0;transform:translateY(6px) scale(.96);transition:opacity .22s ease,transform .22s ease;pointer-events:none;white-space:normal;word-break:break-word;text-align:left;}",
+			".dsh-pet-bubble{position:absolute;bottom:calc(100% + 12px);right:-8px;max-width:250px;min-width:120px;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#1e293b);border-radius:14px;padding:10px 14px;font-size:13px;line-height:1.55;box-shadow:0 10px 28px rgba(15,23,42,.18);border:1px solid var(--dsw-alias-border-l1,rgba(30,64,175,.08));opacity:0;transform:translateY(6px) scale(.96);transition:opacity .22s ease,transform .22s ease;pointer-events:none;white-space:normal;word-break:break-word;text-align:left;}",
 			".dsh-pet-bubble.dsh-pet-show{opacity:1;transform:translateY(0) scale(1);}",
-			".dsh-pet-bubble:after{content:\"\";position:absolute;top:100%;right:16px;border:9px solid transparent;border-top-color:#fff;}",
+			".dsh-pet-bubble:after{content:\"\";position:absolute;top:100%;right:16px;border:9px solid transparent;border-top-color:var(--dsw-alias-bg-overlay,#fff);}",
 			".dsh-pet-particle{position:absolute;left:50%;top:30%;width:8px;height:8px;border-radius:50%;pointer-events:none;opacity:0;animation:dsh-pet-burst 1.15s ease-out forwards;}",
 			"@keyframes dsh-pet-burst{0%{opacity:1;transform:translate(0,0) scale(1);}100%{opacity:0;transform:translate(var(--dx),var(--dy)) scale(.3);}}",
-			".dsh-pet-menu{position:fixed;background:#fff;color:#1e293b;border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.22);padding:6px;min-width:180px;z-index:2147483001;font-size:13px;display:none;border:1px solid rgba(30,64,175,.08);}",
+			".dsh-pet-menu{position:fixed;background:var(--dsw-alias-bg-overlay,#fff);color:var(--dsw-alias-label-primary,#1e293b);border-radius:12px;box-shadow:0 12px 32px rgba(15,23,42,.22);padding:6px;min-width:160px;z-index:2147483001;font-size:13px;display:none;border:1px solid var(--dsw-alias-border-l1,rgba(30,64,175,.08));}",
 			".dsh-pet-menu.dsh-pet-show{display:block;}",
-			".dsh-pet-menu-item{padding:9px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:8px;}",
-			".dsh-pet-menu-item:hover{background:#eef2ff;}",
-			".dsh-pet-menu-item .dsh-pet-menu-emoji{font-size:15px;}",
-			".dsh-pet-hidden-btn{position:fixed;right:22px;bottom:22px;z-index:2147483000;width:46px;height:46px;border-radius:50%;background:#fff;box-shadow:0 8px 20px rgba(15,23,42,.2);display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;border:1px solid rgba(30,64,175,.1);}",
+			".dsh-pet-menu-item{padding:9px 12px;border-radius:8px;cursor:pointer;white-space:nowrap;}",
+			".dsh-pet-menu-item:hover{background:var(--dsw-alias-interactive-bg-hover,#eef2ff);}",
+			".dsh-pet-hidden-btn{position:fixed;right:22px;bottom:22px;z-index:2147483000;width:46px;height:46px;border-radius:50%;background:var(--dsw-alias-bg-overlay,#fff);box-shadow:0 8px 20px rgba(15,23,42,.2);display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;border:1px solid var(--dsw-alias-border-l1,rgba(30,64,175,.1));}",
 			".dsh-pet-hidden-btn.dsh-pet-show{display:flex;}",
 			".dsh-pet-hidden-btn:hover{transform:scale(1.08);}",
 			"@media (prefers-reduced-motion: reduce){.dsh-pet-root img.dsh-pet-img{animation:none;}}"
@@ -448,35 +447,35 @@ window.__ModuleLoader__.load({
 			function showMenu(x, y) {
 				menu.innerHTML = "";
 				var items = [
-					{ emoji: "🏠", label: "回到右下角", run: function () {
+					{ label: "回到右下角", run: function () {
 						var p = clampPosition(pet, window.innerWidth - pet.offsetWidth - 24, window.innerHeight - pet.offsetHeight - 24);
 						applyPosition(p.left, p.top);
 						say("回家啦～继续陪主人！");
 					} },
-					{ emoji: "🎭", label: "换一个姿势", run: function () {
+					{ label: "换一个姿势", run: function () {
 						var poses = ["idle", "wave", "sleepy", "happy"];
 						var next = pick(poses);
 						setPetPose(img, next);
 						say(next === "happy" ? "今天心情超好，主人摸摸～" : next === "sleepy" ? "困了…鲸鲸小憩一下~" : next === "wave" ? "嗨嗨～主人好！" : "继续陪主人干活！", 2200);
 					} },
-					{ emoji: "😂", label: "讲个冷笑话", run: function () {
+					{ label: "讲个冷笑话", run: function () {
 						say(pick(JOKES), 6000);
 					} },
-					{ emoji: "🔮", label: "今日运势", run: function () {
+					{ label: "今日运势", run: function () {
 						say(pick(FORTUNES), 5000);
 					} },
-					{ emoji: "🤗", label: "摸摸头", run: function () {
+					{ label: "摸摸头", run: function () {
 						pet.classList.add("dsh-pet-hug");
 						setTimeout(function () { pet.classList.remove("dsh-pet-hug"); }, 700);
 						showHappy("嘿嘿，被主人摸头啦，好幸福！");
 					} },
-					{ emoji: "🐋", label: "自我介绍", run: function () {
+					{ label: "自我介绍", run: function () {
 						say(pick(INTRO_LINES), 6000);
 					} },
-					{ emoji: "💬", label: "说点什么", run: function () {
+					{ label: "说点什么", run: function () {
 						say(pick(LINES));
 					} },
-					{ emoji: "🙈", label: "躲起来", run: function () {
+					{ label: "躲起来", run: function () {
 						pet.style.display = "none";
 						hiddenBtn.classList.add("dsh-pet-show");
 						storeFlag(STORE_HIDDEN, true);
@@ -485,15 +484,15 @@ window.__ModuleLoader__.load({
 				items.forEach(function (item) {
 					var el = document.createElement("div");
 					el.className = "dsh-pet-menu-item";
-					el.innerHTML = '<span class="dsh-pet-menu-emoji">' + item.emoji + "</span><span>" + item.label + "</span>";
+					el.textContent = item.label;
 					el.addEventListener("click", function () {
 						hideMenu();
 						item.run();
 					});
 					menu.appendChild(el);
 				});
-				var mw = menu.offsetWidth || 180;
-				var mh = menu.offsetHeight || 320;
+				var mw = menu.offsetWidth || 150;
+				var mh = menu.offsetHeight || 300;
 				menu.style.left = Math.min(x, window.innerWidth - mw - 8) + "px";
 				menu.style.top = Math.min(y, window.innerHeight - mh - 8) + "px";
 				menu.classList.add("dsh-pet-show");
