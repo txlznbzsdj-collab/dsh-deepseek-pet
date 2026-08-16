@@ -11,5 +11,6 @@
         scale: 1
         activityLevel: normal
         reducedMotion: false
+        physicsEnabled: true
         settingsPanelAnimation: true
         includeSubagents: false

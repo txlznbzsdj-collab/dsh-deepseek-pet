@@ -144,11 +144,15 @@ window.__ModuleLoader__.load({
 			".dsh-pet-root.dsh-pet-dragging,.dsh-pet-root.dsh-pet-dragging:hover{transform:none;cursor:grabbing;}",
 			".dsh-pet-root img.dsh-pet-img{width:100%;height:170px;object-fit:contain;display:block;pointer-events:none;animation:dsh-pet-idle 3.6s ease-in-out infinite;transform-origin:50% 90%;}",
 			".dsh-pet-root.dsh-pet-dragging img.dsh-pet-img{animation:dsh-pet-drag-tilt .18s ease-out infinite alternate;}",
+			".dsh-pet-root.dsh-pet-walking:after{content:'';position:absolute;left:30%;right:22%;bottom:5px;height:8px;border-radius:50%;background:rgba(30,64,175,.16);filter:blur(4px);pointer-events:none;animation:dsh-pet-walk-shadow 1.05s ease-in-out infinite;}",
+			".dsh-pet-root.dsh-pet-walking img.dsh-pet-img{animation:dsh-pet-glide 1.05s cubic-bezier(.45,0,.55,1) infinite;}",
 			".dsh-pet-root.dsh-pet-bounce img.dsh-pet-img{animation:dsh-pet-bounce .5s ease;}",
 			".dsh-pet-root.dsh-pet-hug img.dsh-pet-img{animation:dsh-pet-hug .6s ease;}",
 			".dsh-pet-root.dsh-pet-edge img.dsh-pet-img{animation:dsh-pet-squish .45s ease;}",
 			"@keyframes dsh-pet-idle{0%,100%{transform:translateY(0) rotate(-1.2deg);}50%{transform:translateY(-7px) rotate(1.2deg);}}",
 			"@keyframes dsh-pet-drag-tilt{0%{transform:rotate(-3deg);}100%{transform:rotate(3deg);}}",
+			"@keyframes dsh-pet-glide{0%,100%{transform:translateY(0) rotate(0deg) scaleX(var(--dsh-pet-face,1));}35%{transform:translateY(-2px) rotate(-1deg) scaleX(var(--dsh-pet-face,1));}70%{transform:translateY(1px) rotate(.6deg) scaleX(var(--dsh-pet-face,1));}}",
+			"@keyframes dsh-pet-walk-shadow{0%,100%{opacity:.55;transform:scaleX(1)}45%{opacity:.3;transform:scaleX(.86)}}",
 			"@keyframes dsh-pet-bounce{0%{transform:scale(1);}30%{transform:scale(.9) rotate(-3deg);}60%{transform:scale(1.06) rotate(2deg);}100%{transform:scale(1);}}",
 			"@keyframes dsh-pet-hug{0%,100%{transform:scale(1);}50%{transform:scale(.88) rotate(-5deg);}}",
 			"@keyframes dsh-pet-squish{0%{transform:scaleX(1);}40%{transform:scaleX(.82) scaleY(1.12);}100%{transform:scaleX(1);}}",
@@ -325,7 +329,7 @@ window.__ModuleLoader__.load({
 			var applyPose = makeApplyPose(pet, img);
 
 			// 设置（host 推送 /config）：启用 / 大小 / 活跃度 / 减少动态
-			var petConfig = { enabled: true, scale: 1, activityLevel: "normal", reducedMotion: false, settingsPanelAnimation: true };
+			var petConfig = { enabled: true, scale: 1, activityLevel: "normal", reducedMotion: false, physicsEnabled: true, settingsPanelAnimation: true };
 			var activityFactor = 1;
 
 			function applyPetConfig(cfg) {
@@ -334,7 +338,9 @@ window.__ModuleLoader__.load({
 				cfg = petConfig;
 				activityFactor = cfg.activityLevel === "quiet" ? 2.6 : cfg.activityLevel === "lively" ? 0.55 : 1;
 				pet.classList.toggle("dsh-pet-reduced", cfg.reducedMotion === true);
-				document.documentElement.classList.toggle("dsh-settings-animation-off", cfg.settingsPanelAnimation === false);
+				if (document.documentElement && document.documentElement.classList) {
+					document.documentElement.classList.toggle("dsh-settings-animation-off", cfg.settingsPanelAnimation === false);
+				}
 				var scale = Number(cfg.scale);
 				if (!Number.isFinite(scale)) scale = 1;
 				scale = Math.max(0.7, Math.min(1.4, scale));
@@ -629,13 +635,15 @@ window.__ModuleLoader__.load({
 				menu.classList.add("dsh-pet-show");
 			}
 
-			function applyPosition(left, top) {
+			function applyPosition(left, top, persist) {
 				pet.style.left = left + "px";
 				pet.style.top = top + "px";
 				pet.style.right = "auto";
 				pet.style.bottom = "auto";
-				storeNumber(STORE_POS + ".x", left);
-				storeNumber(STORE_POS + ".y", top);
+				if (persist !== false) {
+					storeNumber(STORE_POS + ".x", left);
+					storeNumber(STORE_POS + ".y", top);
+				}
 			}
 
 			// 恢复位置 / 隐藏状态
@@ -649,6 +657,123 @@ window.__ModuleLoader__.load({
 				pet.style.display = "none";
 				hiddenBtn.classList.add("dsh-pet-show");
 			}
+
+			// 轻量页面物理：大肥鱼受重力影响，能在视口底部和聊天输入区顶部行走。
+			var physics = { x: NaN, y: NaN, vx: 0, vy: 0, grounded: false, moving: false, nextMoveAt: 0, stopAt: 0, lastAt: 0, persistAt: 0, platformsAt: 0, platformCache: [], renderedX: NaN, renderedY: NaN };
+			function physicsPlatforms(now) {
+				if (physics.platformCache.length && now - physics.platformsAt < 700) return physics.platformCache;
+				var platforms = [{ left: 0, right: window.innerWidth, top: window.innerHeight - 8 }];
+				var nodes = document.querySelectorAll('textarea,[contenteditable="true"],[role="textbox"]');
+				for (var i = 0; i < nodes.length; i++) {
+					var node = nodes[i];
+					var best = null;
+					for (var depth = 0; node && depth < 5; depth++, node = node.parentElement) {
+						if (!node.getBoundingClientRect) continue;
+						var rect = node.getBoundingClientRect();
+						if (rect.width >= 260 && rect.height >= 36 && rect.height <= 260 && rect.bottom > window.innerHeight * 0.5) best = rect;
+					}
+					if (best && best.top > 80 && best.top < window.innerHeight - 20) {
+						platforms.push({ left: best.left, right: best.right, top: best.top });
+					}
+				}
+				platforms.sort(function (a, b) { return a.top - b.top; });
+				physics.platformsAt = now;
+				physics.platformCache = platforms;
+				return platforms;
+			}
+			function schedulePhysics(delay) {
+				setTimeout(function () {
+					if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(physicsFrame);
+				}, delay);
+			}
+			function physicsFrame(now) {
+				if (!Number.isFinite(physics.x) || !Number.isFinite(physics.y)) {
+					var initial = pet.getBoundingClientRect();
+					physics.x = initial.left;
+					physics.y = initial.top;
+				}
+				var dt = physics.lastAt ? Math.min(0.034, (now - physics.lastAt) / 1000) : 0;
+				physics.lastAt = now;
+				if (petConfig.physicsEnabled !== false && pet.style.display !== "none" && !drag.active) {
+					var w = pet.offsetWidth || 150;
+					var h = pet.offsetHeight || 170;
+					var oldBottom = physics.y + h;
+					if (!thinking && !asleep && petConfig.reducedMotion !== true) {
+						if (physics.moving && now >= physics.stopAt) {
+							physics.moving = false;
+							physics.vx = 0;
+							pet.classList.remove("dsh-pet-walking");
+							var restBase = petConfig.activityLevel === "quiet" ? 33000 : petConfig.activityLevel === "lively" ? 9300 : 18300;
+							var restSpread = petConfig.activityLevel === "quiet" ? 30000 : petConfig.activityLevel === "lively" ? 14000 : 21700;
+							physics.nextMoveAt = now + restBase + Math.random() * restSpread;
+						} else if (!physics.moving && now >= physics.nextMoveAt) {
+							var walkChance = petConfig.activityLevel === "quiet" ? 0.16 : petConfig.activityLevel === "lively" ? 0.42 : 0.28;
+							if (Math.random() >= walkChance) {
+								var retryBase = petConfig.activityLevel === "quiet" ? 12000 : petConfig.activityLevel === "lively" ? 4500 : 7500;
+								physics.nextMoveAt = now + retryBase + Math.random() * retryBase;
+							} else {
+							physics.moving = true;
+							var speed = petConfig.activityLevel === "quiet" ? 18 : petConfig.activityLevel === "lively" ? 46 : 30;
+							var walkBase = petConfig.activityLevel === "quiet" ? 1200 : petConfig.activityLevel === "lively" ? 1800 : 1500;
+							physics.vx = (Math.random() < 0.5 ? -1 : 1) * speed;
+							pet.style.setProperty("--dsh-pet-face", physics.vx < 0 ? 1 : -1);
+							pet.classList.add("dsh-pet-walking");
+							physics.stopAt = now + walkBase + Math.random() * 2200;
+							}
+						}
+					} else {
+						physics.moving = false;
+						physics.vx = 0;
+						pet.classList.remove("dsh-pet-walking");
+						physics.nextMoveAt = now + 3000;
+					}
+					physics.vy += 1250 * dt;
+					var nextX = physics.x + physics.vx * dt;
+					var nextY = physics.y + physics.vy * dt;
+					if (nextX < 8 || nextX + w > window.innerWidth - 8) {
+						nextX = Math.max(8, Math.min(window.innerWidth - w - 8, nextX));
+						physics.vx = -physics.vx;
+						pet.style.setProperty("--dsh-pet-face", physics.vx < 0 ? 1 : -1);
+						edgeSquish();
+					}
+					physics.grounded = false;
+					var platforms = physicsPlatforms(now);
+					for (var j = 0; j < platforms.length; j++) {
+						var platform = platforms[j];
+						var center = nextX + w * 0.5;
+						var nextBottom = nextY + h;
+						var landsFromAbove = oldBottom <= platform.top + 8 && nextBottom >= platform.top;
+						if (center >= platform.left && center <= platform.right && physics.vy >= 0 && landsFromAbove) {
+							nextY = platform.top - h;
+							physics.vy = 0;
+							physics.grounded = true;
+							break;
+						}
+					}
+					physics.x = nextX;
+					physics.y = Math.max(8, nextY);
+					if (!Number.isFinite(physics.renderedX) || !Number.isFinite(physics.renderedY) || Math.abs(physics.x - physics.renderedX) > 0.1 || Math.abs(physics.y - physics.renderedY) > 0.1) {
+						applyPosition(physics.x, physics.y, false);
+						physics.renderedX = physics.x;
+						physics.renderedY = physics.y;
+					}
+					if (now - physics.persistAt > 1200) {
+						physics.persistAt = now;
+						storeNumber(STORE_POS + ".x", physics.x);
+						storeNumber(STORE_POS + ".y", physics.y);
+					}
+				} else {
+					var paused = pet.getBoundingClientRect();
+					physics.x = paused.left;
+					physics.y = paused.top;
+					physics.renderedX = paused.left;
+					physics.renderedY = paused.top;
+					physics.vy = 0;
+				}
+				var activePhysics = petConfig.physicsEnabled !== false && pet.style.display !== "none" && !drag.active && (physics.moving || !physics.grounded);
+				schedulePhysics(activePhysics ? 0 : 220);
+			}
+			if (typeof window.requestAnimationFrame === "function") schedulePhysics(0);
 
 			hiddenBtn.addEventListener("click", function () {
 				pet.style.display = "";
@@ -665,6 +790,10 @@ window.__ModuleLoader__.load({
 
 			pet.addEventListener("pointerdown", function (ev) {
 				if (ev.button !== 0 && ev.button !== undefined) return;
+				physics.moving = false;
+				physics.vx = 0;
+				pet.classList.remove("dsh-pet-walking");
+				physics.nextMoveAt = (physics.lastAt || 0) + 4500;
 				drag.active = true;
 				drag.moved = false;
 				drag.longPressed = false;
@@ -704,6 +833,14 @@ window.__ModuleLoader__.load({
 
 			pet.addEventListener("pointerup", function (ev) {
 				if (!drag.active) return;
+				var releasedRect = pet.getBoundingClientRect();
+				physics.x = releasedRect.left;
+				physics.y = releasedRect.top;
+				physics.renderedX = releasedRect.left;
+				physics.renderedY = releasedRect.top;
+				physics.vy = 0;
+				physics.grounded = false;
+				physics.lastAt = 0;
 				drag.active = false;
 				pet.classList.remove("dsh-pet-dragging");
 				if (longPressTimer !== null) clearTimeout(longPressTimer);
@@ -740,6 +877,14 @@ window.__ModuleLoader__.load({
 			});
 
 			pet.addEventListener("pointercancel", function () {
+				var cancelledRect = pet.getBoundingClientRect();
+				physics.x = cancelledRect.left;
+				physics.y = cancelledRect.top;
+				physics.renderedX = cancelledRect.left;
+				physics.renderedY = cancelledRect.top;
+				physics.vy = 0;
+				physics.grounded = false;
+				physics.lastAt = 0;
 				drag.active = false;
 				pet.classList.remove("dsh-pet-dragging");
 				if (longPressTimer !== null) clearTimeout(longPressTimer);
@@ -946,6 +1091,7 @@ window.__ModuleLoader__.load({
 						h(Field, { id: "dsp-scale", label: "角色大小", hint: "当前 " + Math.round((draft.scale || 1) * 100) + "%（范围 70%–140%）" }, h("input", { id: "dsp-scale", className: "dsp-range", type: "range", min: 0.7, max: 1.4, step: 0.05, value: draft.scale || 1, disabled: disabled, onChange: function (event) { edit("scale", Number(event.target.value)); } })),
 						h(Field, { id: "dsp-activity", label: "活跃程度", hint: "选择后大肥鱼会立即回应，保存后正式生效。" }, h("div", { id: "dsp-activity", className: "dsp-segment", role: "group", "aria-label": "活跃程度" }, activityChoice("quiet", "安静"), activityChoice("normal", "标准"), activityChoice("lively", "活泼"))),
 						h(Field, { id: "dsp-motion", label: "减少动态效果", hint: "切换后立即预览，减少走动、循环和晃动。" }, h(Toggle, { id: "dsp-motion", checked: draft.reducedMotion === true, disabled: disabled, onChange: function (event) { edit("reducedMotion", event.target.checked); } })),
+						h(Field, { id: "dsp-physics", label: "自由行走与重力", hint: "让大肥鱼自由行走，并站在聊天输入框等页面平台上。" }, h(Toggle, { id: "dsp-physics", checked: draft.physicsEnabled !== false, disabled: disabled, onChange: function (event) { edit("physicsEnabled", event.target.checked); } })),
 						h(Field, { id: "dsp-settings-animation", label: "设置页打开动画", hint: "只控制 DSH 设置面板的打开过渡，不影响大肥鱼动作。" }, h(Toggle, { id: "dsp-settings-animation", checked: draft.settingsPanelAnimation !== false, disabled: disabled, onChange: function (event) { edit("settingsPanelAnimation", event.target.checked); } })),
 						h(Field, { id: "dsp-subagents", label: "响应子 Agent", hint: "允许子 Agent 状态参与桌宠状态选择。" }, h(Toggle, { id: "dsp-subagents", checked: draft.includeSubagents === true, disabled: disabled, onChange: function (event) { edit("includeSubagents", event.target.checked); } })),
 						h("div", { className: "dsp-footer" }, h("button", { type: "button", className: "dsp-button", disabled: !dirty || status === "saving", onClick: function () { setDraft(saved); preview(saved); setStatus("ready"); } }, "放弃修改"), h("button", { type: "button", className: "dsp-button dsp-save", disabled: !dirty || status === "saving", onClick: save }, status === "saving" ? "保存中" : "保存"))) : null);

@@ -26,6 +26,7 @@ export const Config = Schema.object({
 		Schema.const("lively").description("活泼")
 	]).default("normal").description("空闲微动作频率"),
 	reducedMotion: Schema.boolean().default(false).description("减少动态效果"),
+	physicsEnabled: Schema.boolean().default(true).description("自由行走与重力"),
 	settingsPanelAnimation: Schema.boolean().default(true).description("设置页打开动画"),
 	includeSubagents: Schema.boolean().default(false).description("允许子 Agent 抢占桌宠状态")
 }).description("由 DeepSeek Harness 状态驱动的小鲸鱼桌宠");
@@ -35,6 +36,7 @@ const DEFAULTS = Object.freeze({
 	scale: 1,
 	activityLevel: "normal",
 	reducedMotion: false,
+	physicsEnabled: true,
 	settingsPanelAnimation: true,
 	includeSubagents: false
 });
@@ -49,6 +51,7 @@ function publicConfig(config = {}) {
 		scale: Number.isFinite(scale) ? Math.min(1.4, Math.max(0.7, scale)) : DEFAULTS.scale,
 		activityLevel,
 		reducedMotion: typeof config.reducedMotion === "boolean" ? config.reducedMotion : DEFAULTS.reducedMotion,
+		physicsEnabled: typeof config.physicsEnabled === "boolean" ? config.physicsEnabled : DEFAULTS.physicsEnabled,
 		settingsPanelAnimation: typeof config.settingsPanelAnimation === "boolean" ? config.settingsPanelAnimation : DEFAULTS.settingsPanelAnimation,
 		includeSubagents: typeof config.includeSubagents === "boolean" ? config.includeSubagents : DEFAULTS.includeSubagents
 	};
