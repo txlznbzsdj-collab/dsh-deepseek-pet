@@ -152,6 +152,9 @@ check("bubble present", !!bubble);
 check("img present with base64 src", !!img && img.src.startsWith("data:image/png;base64,"));
 check("style injected with new animations", documentStub.head.children.some((c) =>
   c.tagName === "STYLE" && c.textContent.includes("dsh-pet-burst") && c.textContent.includes("dsh-pet-idle")));
+// Existing interaction assertions expect complete text; streaming has a dedicated assertion below.
+esInstances[0].onmessage({ data: JSON.stringify({ type: "config", config: { streamText: false } }) });
+await sleep(10);
 
 const pd = (x, y) => pet._listeners.pointerdown[0]({ button: 0, clientX: x, clientY: y, pointerId: 1 });
 const pm = (x, y) => pet._listeners.pointermove[0]({ clientX: x, clientY: y });
@@ -301,6 +304,12 @@ if (es) {
   check("config enabled=false → 隐藏", pet.style.display === "none");
   es.onmessage({ data: JSON.stringify({ type: "config", config: { enabled: true, scale: 1, activityLevel: "normal", reducedMotion: false } }) });
   await sleep(20);
+  es.onmessage({ data: JSON.stringify({ type: "config", config: { streamText: true } }) });
+  es.onmessage({ data: JSON.stringify({ type: "say", text: "stream-test", mood: "idle" }) });
+  await sleep(20);
+  check("stream text → partial first", bubble.textContent.length > 0 && bubble.textContent !== "stream-test");
+  await sleep(900);
+  check("stream text → complete eventually", bubble.textContent === "stream-test");
   check("config enabled=true → 恢复显示", pet.style.display !== "none");
 
   // 10) 新姿势：shy 精灵姿势 + jump CSS 姿势（pet_say mood）

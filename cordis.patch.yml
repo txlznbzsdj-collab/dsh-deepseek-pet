@@ -12,5 +12,6 @@
         activityLevel: normal
         reducedMotion: false
         physicsEnabled: true
+        streamText: true
         settingsPanelAnimation: true
         includeSubagents: false

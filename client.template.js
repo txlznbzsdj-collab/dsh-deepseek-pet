@@ -314,6 +314,7 @@ window.__ModuleLoader__.load({
 			body.appendChild(hiddenBtn);
 
 			var bubbleTimer = null;
+			var streamTextTimer = null;
 			var poseTimer = null;
 			var happyTimer = null;
 			var idleSleepTimer = null;
@@ -329,7 +330,7 @@ window.__ModuleLoader__.load({
 			var applyPose = makeApplyPose(pet, img);
 
 			// 设置（host 推送 /config）：启用 / 大小 / 活跃度 / 减少动态
-			var petConfig = { enabled: true, scale: 1, activityLevel: "normal", reducedMotion: false, physicsEnabled: true, settingsPanelAnimation: true };
+			var petConfig = { enabled: true, scale: 1, activityLevel: "normal", reducedMotion: false, physicsEnabled: true, streamText: true, settingsPanelAnimation: true };
 			var activityFactor = 1;
 
 			function applyPetConfig(cfg) {
@@ -378,12 +379,39 @@ window.__ModuleLoader__.load({
 			});
 
 			function say(text, ms) {
-				bubble.textContent = text;
+				if (streamTextTimer !== null) {
+					clearTimeout(streamTextTimer);
+					streamTextTimer = null;
+				}
+				if (bubbleTimer !== null) {
+					clearTimeout(bubbleTimer);
+					bubbleTimer = null;
+				}
 				bubble.classList.add("dsh-pet-show");
-				if (bubbleTimer !== null) clearTimeout(bubbleTimer);
-				bubbleTimer = setTimeout(function () {
-					bubble.classList.remove("dsh-pet-show");
-				}, ms || 3800);
+				var content = String(text || "");
+				function scheduleBubbleHide() {
+					bubbleTimer = setTimeout(function () {
+						bubble.classList.remove("dsh-pet-show");
+					}, ms || 3800);
+				}
+				if (petConfig.streamText !== true || content.length < 2) {
+					bubble.textContent = content;
+					scheduleBubbleHide();
+					return;
+				}
+				var glyphs = Array.from(content);
+				var index = 0;
+				bubble.textContent = "";
+				function revealNext() {
+					index += 1;
+					bubble.textContent = glyphs.slice(0, index).join("");
+					if (index < glyphs.length) streamTextTimer = setTimeout(revealNext, 34);
+					else {
+						streamTextTimer = null;
+						scheduleBubbleHide();
+					}
+				}
+				revealNext();
 			}
 
 			/** 撒花粒子特效。 */
@@ -1092,6 +1120,7 @@ window.__ModuleLoader__.load({
 						h(Field, { id: "dsp-activity", label: "活跃程度", hint: "选择后大肥鱼会立即回应，保存后正式生效。" }, h("div", { id: "dsp-activity", className: "dsp-segment", role: "group", "aria-label": "活跃程度" }, activityChoice("quiet", "安静"), activityChoice("normal", "标准"), activityChoice("lively", "活泼"))),
 						h(Field, { id: "dsp-motion", label: "减少动态效果", hint: "切换后立即预览，减少走动、循环和晃动。" }, h(Toggle, { id: "dsp-motion", checked: draft.reducedMotion === true, disabled: disabled, onChange: function (event) { edit("reducedMotion", event.target.checked); } })),
 						h(Field, { id: "dsp-physics", label: "自由行走与重力", hint: "让大肥鱼自由行走，并站在聊天输入框等页面平台上。" }, h(Toggle, { id: "dsp-physics", checked: draft.physicsEnabled !== false, disabled: disabled, onChange: function (event) { edit("physicsEnabled", event.target.checked); } })),
+						h(Field, { id: "dsp-stream-text", label: "气泡文字流式输出", hint: "开启后，大肥鱼的台词会逐字显示；关闭则一次性出现。" }, h(Toggle, { id: "dsp-stream-text", checked: draft.streamText === true, disabled: disabled, onChange: function (event) { edit("streamText", event.target.checked); } })),
 						h(Field, { id: "dsp-settings-animation", label: "设置页打开动画", hint: "只控制 DSH 设置面板的打开过渡，不影响大肥鱼动作。" }, h(Toggle, { id: "dsp-settings-animation", checked: draft.settingsPanelAnimation !== false, disabled: disabled, onChange: function (event) { edit("settingsPanelAnimation", event.target.checked); } })),
 						h(Field, { id: "dsp-subagents", label: "响应子 Agent", hint: "允许子 Agent 状态参与桌宠状态选择。" }, h(Toggle, { id: "dsp-subagents", checked: draft.includeSubagents === true, disabled: disabled, onChange: function (event) { edit("includeSubagents", event.target.checked); } })),
 						h("div", { className: "dsp-footer" }, h("button", { type: "button", className: "dsp-button", disabled: !dirty || status === "saving", onClick: function () { setDraft(saved); preview(saved); setStatus("ready"); } }, "放弃修改"), h("button", { type: "button", className: "dsp-button dsp-save", disabled: !dirty || status === "saving", onClick: save }, status === "saving" ? "保存中" : "保存"))) : null);
