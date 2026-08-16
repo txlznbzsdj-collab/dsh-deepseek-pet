@@ -17,6 +17,12 @@ function makeEl(tag) {
       add(...c) { c.forEach((x) => this._set.add(x)); },
       remove(...c) { c.forEach((x) => this._set.delete(x)); },
       contains(c) { return this._set.has(c); },
+      toggle(c, force) {
+        const has = this._set.has(c);
+        const want = force === undefined ? !has : !!force;
+        if (want) this._set.add(c); else this._set.delete(c);
+        return want;
+      },
     },
     attrs: {},
     _listeners: {},
@@ -203,14 +209,14 @@ await sleep(20);
 check("menu closes on scroll (idle)", !menu.classList.contains("dsh-pet-show"));
 
 // 模型运行中（thinking）滚动 → 不收起（对话流式输出自动滚动不能关菜单）
-esInstances[0].onmessage({ data: JSON.stringify({ type: "turn", phase: "start", origin: "root" }) });
+esInstances[0].onmessage({ data: JSON.stringify({ type: "status", state: "thinking", message: "思考中" }) });
 await sleep(30);
 await menuOpen();
 documentStub._listeners.scroll[0]({});
 await sleep(20);
 check("menu stays open on scroll (thinking)", menu.classList.contains("dsh-pet-show"));
 // 结束 thinking，避免影响后续用例
-esInstances[0].onmessage({ data: JSON.stringify({ type: "turn", phase: "end", origin: "root" }) });
+esInstances[0].onmessage({ data: JSON.stringify({ type: "status", state: "idle", message: "空闲" }) });
 await sleep(30);
 
 // 点菜单项 → 收起 + 执行
@@ -242,7 +248,7 @@ documentStub._listeners.visibilitychange[0]({});
 await sleep(30);
 check("visible → wake idle", img.dataset.pose === "idle");
 
-// 9) SSE 链路：pet_say 命令 + 对话起止同步
+// 9) SSE 链路：pet_say 命令 + status 状态机（思考/工作/等待/错误/成功）
 const es = esInstances[0];
 check("EventSource connected to /plugins/pet-events", !!es && es.url === "/plugins/pet-events");
 if (es) {
@@ -251,15 +257,51 @@ if (es) {
   check("say frame → bubble 显示命令文本", bubble.textContent === "主人加油！" && bubble.classList.contains("dsh-pet-show"));
   check("say frame → mood 姿势", img.dataset.pose === "happy");
 
-  es.onmessage({ data: JSON.stringify({ type: "turn", phase: "start", origin: "root" }) });
+  // status: thinking → review 思考姿势 + 文案
+  es.onmessage({ data: JSON.stringify({ type: "status", state: "thinking", message: "收到主人！鲸鲸开始梳理任务～", detail: "分析阶段" }) });
   await sleep(30);
-  check("turn start → review 思考姿势", img.dataset.pose === "review");
-  check("turn start → 思考气泡", /思考|干活|收到|明白/.test(bubble.textContent));
+  check("status thinking → review 思考姿势", img.dataset.pose === "review");
+  check("status thinking → 思考气泡", /思考|梳理|收到/.test(bubble.textContent) || bubble.textContent.includes("分析阶段"));
 
-  es.onmessage({ data: JSON.stringify({ type: "turn", phase: "end", origin: "root" }) });
+  // status: working → curious + 活动文案
+  es.onmessage({ data: JSON.stringify({ type: "status", state: "working", activity: "searching", message: "正在帮主人找相关文件呢～", detail: "查找阶段" }) });
   await sleep(30);
-  check("turn end → happy/jump 庆祝", img.dataset.pose === "happy" || img.dataset.pose === "jump");
-  check("turn end → 完成台词", /完成|收工|搞定|点赞/.test(bubble.textContent));
+  check("status working → curious 姿势", img.dataset.pose === "curious");
+  check("status working → 活动气泡", bubble.textContent.includes("找相关文件"));
+
+  // status: waiting → curious + 等待文案
+  es.onmessage({ data: JSON.stringify({ type: "status", state: "waiting", message: "需要主人确认一下后续呢～" }) });
+  await sleep(30);
+  check("status waiting → 等待气泡", bubble.textContent.includes("确认"));
+
+  // status: success 脉冲 → happy/jump 庆祝
+  es.onmessage({ data: JSON.stringify({ type: "status", state: "success", pulse: true, ttlMs: 2400, message: "这一轮搞定啦主人！", resumeState: "idle" }) });
+  await sleep(30);
+  check("status success → happy/jump 庆祝", img.dataset.pose === "happy" || img.dataset.pose === "jump");
+  check("status success → 完成台词", /完成|搞定|收工/.test(bubble.textContent));
+
+  // status: error 持久 → surprised + 错误文案
+  es.onmessage({ data: JSON.stringify({ type: "status", state: "error", message: "任务好像遇到问题了呢…" }) });
+  await sleep(30);
+  check("status error → surprised 姿势", img.dataset.pose === "surprised");
+  check("status error → 错误气泡", bubble.textContent.includes("问题"));
+
+  // status: idle → 回到 idle
+  es.onmessage({ data: JSON.stringify({ type: "status", state: "idle", message: "鲸鲸待命中～" }) });
+  await sleep(30);
+  check("status idle → idle 姿势", img.dataset.pose === "idle");
+
+  // config 帧：scale + reducedMotion + enabled
+  es.onmessage({ data: JSON.stringify({ type: "config", config: { enabled: true, scale: 1.2, activityLevel: "lively", reducedMotion: true } }) });
+  await sleep(30);
+  check("config scale → 宽度变化", pet.style.width === "180px");
+  check("config reducedMotion → 类生效", pet.classList.contains("dsh-pet-reduced"));
+  es.onmessage({ data: JSON.stringify({ type: "config", config: { enabled: false } }) });
+  await sleep(20);
+  check("config enabled=false → 隐藏", pet.style.display === "none");
+  es.onmessage({ data: JSON.stringify({ type: "config", config: { enabled: true, scale: 1, activityLevel: "normal", reducedMotion: false } }) });
+  await sleep(20);
+  check("config enabled=true → 恢复显示", pet.style.display !== "none");
 
   // 10) 新姿势：shy 精灵姿势 + jump CSS 姿势（pet_say mood）
   es.onmessage({ data: JSON.stringify({ type: "say", text: "测 shy", mood: "shy" }) });

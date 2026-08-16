@@ -170,6 +170,8 @@ window.__ModuleLoader__.load({
 			".dsh-pet-hidden-btn{position:fixed;right:22px;bottom:22px;z-index:2147483000;width:46px;height:46px;border-radius:50%;background:var(--dsw-alias-bg-overlay,#fff);box-shadow:0 8px 20px rgba(15,23,42,.2);display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;border:1px solid var(--dsw-alias-border-l1,rgba(30,64,175,.1));transition:transform .2s ease;}",
 			".dsh-pet-hidden-btn.dsh-pet-show{display:flex;}",
 			".dsh-pet-hidden-btn:hover{transform:scale(1.08);}",
+			".dsh-pet-root.dsh-pet-reduced img.dsh-pet-img{animation:none;}",
+			".dsh-pet-root.dsh-pet-reduced,.dsh-pet-root.dsh-pet-reduced:hover{transform:none;transition:none;}",
 			"@media (prefers-reduced-motion: reduce){.dsh-pet-root img.dsh-pet-img{animation:none;}.dsh-pet-root,.dsh-pet-root:hover{transform:none;transition:none;}.dsh-pet-hidden-btn{transition:none;}}"
 		].join("\n");
 
@@ -322,6 +324,53 @@ window.__ModuleLoader__.load({
 			var drag = { active: false, moved: false, longPressed: false, startX: 0, startY: 0, left: 0, top: 0, downAt: 0 };
 			var applyPose = makeApplyPose(pet, img);
 
+			// 设置（host 推送 /config）：启用 / 大小 / 活跃度 / 减少动态
+			var petConfig = { enabled: true, scale: 1, activityLevel: "normal", reducedMotion: false, settingsPanelAnimation: true };
+			var activityFactor = 1;
+
+			function applyPetConfig(cfg) {
+				if (!cfg || typeof cfg !== "object") return;
+				petConfig = Object.assign({}, petConfig, cfg);
+				cfg = petConfig;
+				activityFactor = cfg.activityLevel === "quiet" ? 2.6 : cfg.activityLevel === "lively" ? 0.55 : 1;
+				pet.classList.toggle("dsh-pet-reduced", cfg.reducedMotion === true);
+				document.documentElement.classList.toggle("dsh-settings-animation-off", cfg.settingsPanelAnimation === false);
+				var scale = Number(cfg.scale);
+				if (!Number.isFinite(scale)) scale = 1;
+				scale = Math.max(0.7, Math.min(1.4, scale));
+				pet.style.width = Math.round(150 * scale) + "px";
+				if (cfg.enabled === false) {
+					// 设置里禁用：彻底隐藏且不显示唤回按钮
+					pet.style.display = "none";
+					hiddenBtn.classList.remove("dsh-pet-show");
+				} else if (loadFlag(STORE_HIDDEN)) {
+					// 用户此前主动"躲起来"过：保持隐藏，显示唤回按钮
+					pet.style.display = "none";
+					hiddenBtn.classList.add("dsh-pet-show");
+				} else {
+					pet.style.display = "";
+				}
+			}
+
+			window.addEventListener("dsh-pet-config-preview", function (event) {
+				if (!event || !event.detail) return;
+				var detail = event.detail;
+				var cfg = detail.config || detail;
+				applyPetConfig(cfg);
+				if (detail.field !== "activityLevel" || cfg.enabled === false) return;
+				if (cfg.activityLevel === "quiet") {
+					applyPose("sleepy");
+					say("好呀，我安静陪着你～", 2800);
+				} else if (cfg.activityLevel === "lively") {
+					applyPose("jump");
+					burst();
+					say("活力全开！一起冲呀！", 2800);
+				} else {
+					applyPose("wave");
+					say("收到，保持刚刚好的节奏！", 2800);
+				}
+			});
+
 			function say(text, ms) {
 				bubble.textContent = text;
 				bubble.classList.add("dsh-pet-show");
@@ -380,37 +429,66 @@ window.__ModuleLoader__.load({
 				scheduleIdleSleep();
 			}
 
-			/** 对话开始：进入思考状态（review 审阅姿势 + 常驻气泡）。 */
-			function enterThinking() {
+			/** 进入忙碌状态（thinking/working/waiting）：停随机动作，锁姿势与常驻气泡。 */
+			function enterBusy() {
 				if (thinking) return;
 				thinking = true;
 				if (poseTimer !== null) clearTimeout(poseTimer);
 				if (wanderTimer !== null) clearTimeout(wanderTimer);
-				applyPose("review");
-				say(pick(THINKING_LINES), 0);
 			}
 
-			/** 对话结束：庆祝一下（happy + 蹦跳），然后恢复日常。 */
-			function exitThinking() {
+			/** 退出忙碌状态，恢复日常随机动作。 */
+			function exitBusy() {
 				if (!thinking) return;
 				thinking = false;
-				applyPose("happy");
-				applyPose("jump", true);
-				if (Date.now() - lastCelebrate > 8000) {
-					lastCelebrate = Date.now();
-					say(pick(COMPLETION_LINES), 2600);
-				} else {
-					say("完成！", 1200);
-				}
-				if (happyTimer !== null) clearTimeout(happyTimer);
-				happyTimer = setTimeout(function () {
-					applyPose("idle");
-					schedulePose();
-					scheduleWander();
-				}, 2200);
+				schedulePose();
+				scheduleWander();
+				scheduleIdleSleep();
 			}
 
-			/** 处理 host 推送的桌宠帧（pet_say 命令 + 对话起止同步）。 */
+			/** 渲染 host 状态机推来的 status 帧（思考/工作/等待/错误/完成）。 */
+			function renderStatus(frame) {
+				var state = frame.state;
+				var detail = frame.detail && frame.detail !== frame.message ? frame.detail : "";
+				var text = (frame.message || "") + (detail ? "\n" + detail : "");
+				if (state === "thinking" || state === "working" || state === "waiting") {
+					enterBusy();
+					applyPose(state === "working" ? "curious" : "review");
+					say(text || "鲸鲸在处理呢～", 0);
+					return;
+				}
+				if (state === "idle") {
+					exitBusy();
+					applyPose("idle");
+					if (text) say(text, 2600);
+					return;
+				}
+				if (state === "error") {
+					exitBusy();
+					if (frame.pulse) {
+						applyPose("shake");
+						if (text) say(text, 2600);
+					} else {
+						applyPose("surprised");
+						say(text || "任务好像遇到问题了呢…", 0);
+					}
+					return;
+				}
+				if (state === "success") {
+					exitBusy();
+					applyPose("happy");
+					applyPose("jump", true);
+					if (Date.now() - lastCelebrate > 8000) {
+						lastCelebrate = Date.now();
+						say(text || pick(COMPLETION_LINES), 2600);
+					} else {
+						say("完成！", 1200);
+					}
+					return;
+				}
+			}
+
+			/** 处理 host 推送的桌宠帧（pet_say 命令 / status 状态 / config 配置）。 */
 			function handlePetFrame(frame) {
 				if (!frame || typeof frame !== "object") return;
 				if (frame.type === "say" && typeof frame.text === "string" && frame.text.length > 0) {
@@ -423,18 +501,22 @@ window.__ModuleLoader__.load({
 					say(frame.text, 4200);
 					return;
 				}
-				if (frame.type === "turn") {
-					if (frame.phase === "start" && frame.origin !== "subagent") enterThinking();
-					else if (frame.phase === "end") exitThinking();
+				if (frame.type === "status") {
+					renderStatus(frame);
+					return;
+				}
+				if (frame.type === "config" && frame.config) {
+					applyPetConfig(frame.config);
 				}
 			}
 
-			/** 随机姿势状态机：wave / sleepy / shy / surprised / review / curious + CSS 姿势。 */
+			/** 随机姿势状态机：wave / sleepy / shy / surprised / review / curious + CSS 姿势（减少动态时只用精灵姿势）。 */
 			function schedulePose() {
 				if (asleep || thinking) return;
 				if (poseTimer !== null) clearTimeout(poseTimer);
 				poseTimer = setTimeout(function () {
 					if (drag.active || asleep || thinking) return;
+					var reduced = petConfig.reducedMotion === true;
 					var r = Math.random();
 					var pose = "idle";
 					var stay = 0;
@@ -444,9 +526,9 @@ window.__ModuleLoader__.load({
 					else if (r < 0.52) { pose = "surprised"; stay = 2000; say("咦？！", 1600); }
 					else if (r < 0.6) { pose = "review"; stay = 2600; say("让鲸鲸审阅一下…", 2200); }
 					else if (r < 0.68) { pose = "curious"; stay = 2200; say("嗯？什么动静？", 1800); }
-					else if (r < 0.78) { pose = "jump"; stay = 1500; }
-					else if (r < 0.86) { pose = "shake"; stay = 1300; }
-					else if (r < 0.92) { pose = "spin"; stay = 1100; }
+					else if (!reduced && r < 0.78) { pose = "jump"; stay = 1500; }
+					else if (!reduced && r < 0.86) { pose = "shake"; stay = 1300; }
+					else if (!reduced && r < 0.92) { pose = "spin"; stay = 1100; }
 					if (pose === "idle") {
 						applyPose("idle");
 						schedulePose();
@@ -457,7 +539,7 @@ window.__ModuleLoader__.load({
 							schedulePose();
 						}, stay);
 					}
-				}, 16000 + Math.random() * 14000);
+				}, (16000 + Math.random() * 14000) * activityFactor);
 			}
 
 			/** 随机主动冒泡（45~90 秒一次）。 */
@@ -756,7 +838,17 @@ window.__ModuleLoader__.load({
 			scheduleWander();
 			scheduleIdleSleep();
 
-			// ── host → 桌宠 推送链路（/plugins/pet-events SSE） ──
+			// ── host → 桌宠 推送链路（/plugins/pet-events SSE）+ 初始配置拉取 ──
+			if (typeof fetch === "function") {
+				try {
+					fetch("/plugins/dsh-deepseek-pet/config").then(function (resp) {
+						if (resp.ok) return resp.json();
+						return null;
+					}).then(function (cfg) {
+						if (cfg) applyPetConfig(cfg);
+					}).catch(function () {});
+				} catch (_) {}
+			}
 			if (typeof EventSource !== "undefined") {
 				try {
 					var petEvents = new EventSource("/plugins/pet-events");
@@ -772,16 +864,109 @@ window.__ModuleLoader__.load({
 			}
 		}
 
-		function apply() {
+		function registerSettingsCard(ctx) {
+			var React;
+			try { React = require("react"); } catch (_) { return; }
+			if (!ctx || !ctx.slots || typeof ctx.slots.inject !== "function") return;
+			var h = React.createElement;
+			var useEffect = React.useEffect;
+			var useRef = React.useRef;
+			var useState = React.useState;
+			if (!document.querySelector("style[data-dsh-pet-settings]")) {
+				var settingsStyle = document.createElement("style");
+				settingsStyle.setAttribute("data-dsh-pet-settings", "");
+				settingsStyle.textContent = ".dsp-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}.dsp-card:hover{border-color:var(--dsw-alias-label-dimmed)}.dsp-card.dsp-open{background:var(--dsw-alias-bg-layer-2);border-color:var(--dsw-alias-label-dimmed)}.dsp-header{appearance:none;width:100%;font:inherit;color:inherit;text-align:left;cursor:pointer;background:transparent;border:0;border-radius:12px;align-items:center;gap:12px;padding:14px 16px;display:flex}.dsp-header:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.dsp-head{display:flex;flex-direction:column;flex:1;gap:4px;min-width:0}.dsp-name{color:var(--dsw-alias-label-primary);font-size:15px;font-weight:600;line-height:1.4}.dsp-desc{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5}.dsp-pending{white-space:nowrap;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}.dsp-chevron{color:var(--dsw-alias-label-tertiary);flex:none;transition:transform .16s}.dsp-open .dsp-chevron{transform:rotate(180deg)}.dsp-body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}.dsp-field{display:flex;flex-direction:column;gap:6px;padding:12px 0}.dsp-field+.dsp-field{border-top:1px solid var(--dsw-alias-border-l2)}.dsp-label{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500;line-height:1.5}.dsp-input{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);height:34px;font:inherit;color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 12px;font-size:13px}.dsp-input:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:none}.dsp-range{width:100%;height:24px;margin:0;accent-color:var(--dsw-alias-brand-primary);cursor:pointer}.dsp-range:disabled{cursor:default;opacity:.5}.dsp-hint{color:var(--dsw-alias-label-tertiary);margin:0;font-size:12px;line-height:1.5}.dsp-error{color:var(--dsw-alias-label-error);font-size:12px}.dsp-footer{border-top:1px solid var(--dsw-alias-border-l2);display:flex;justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px}.dsp-button{appearance:none;font:inherit;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:5px 14px;font-size:13px;background:transparent;color:var(--dsw-alias-label-secondary)}.dsp-button.dsp-save{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3);border-color:transparent}.dsp-button:disabled{opacity:.4;cursor:default}";
+				settingsStyle.textContent += ".dsp-input:hover{border-color:var(--dsw-alias-label-dimmed)}.dsp-toggle{position:relative;display:inline-flex;width:36px;height:20px;cursor:pointer}.dsp-toggle input{position:absolute;opacity:0;pointer-events:none}.dsp-toggle-track{width:36px;height:20px;border-radius:999px;background:var(--dsw-alias-border-l2);box-shadow:inset 0 0 0 1px var(--dsw-alias-border-l1);transition:background .16s,box-shadow .16s}.dsp-toggle-track:after{content:'';display:block;width:16px;height:16px;margin:2px;border-radius:50%;background:var(--dsw-alias-bg-layer-1);box-shadow:0 1px 3px rgba(0,0,0,.22);transition:transform .16s}.dsp-toggle input:checked+.dsp-toggle-track{background:var(--dsw-alias-brand-primary);box-shadow:none}.dsp-toggle input:checked+.dsp-toggle-track:after{transform:translateX(16px)}.dsp-toggle input:focus-visible+.dsp-toggle-track{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}.dsp-toggle input:disabled+.dsp-toggle-track{opacity:.45}.dsp-toggle:has(input:disabled){cursor:default}.dsp-button:not(:disabled):hover{background:var(--dsw-alias-bg-module-platform)}.dsp-button.dsp-save:not(:disabled):hover{filter:brightness(.92)}";
+				settingsStyle.textContent += ".dsp-select{position:relative;display:block}.dsp-select .dsp-input{appearance:none;width:100%;padding-right:34px;cursor:pointer}.dsp-select svg{position:absolute;right:11px;top:10px;width:14px;height:14px;color:var(--dsw-alias-label-tertiary);pointer-events:none}.dsp-select:focus-within svg{color:var(--dsw-alias-brand-primary)}";
+				settingsStyle.textContent += ".dsp-segment{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:3px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-3)}.dsp-segment-button{appearance:none;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;height:30px;cursor:pointer;transition:background .16s,color .16s,box-shadow .16s}.dsp-segment-button:not(:disabled):hover{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary)}.dsp-segment-button.dsp-active{background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-brand-primary);font-weight:500;box-shadow:0 1px 3px rgba(0,0,0,.12)}.dsp-segment-button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}.dsp-segment-button:disabled{opacity:.45;cursor:default}";
+				settingsStyle.textContent += ".dsp-card{animation:dsp-card-enter .22s cubic-bezier(.2,.8,.2,1) both}.dsp-body{transform-origin:top;animation:dsp-body-open .2s cubic-bezier(.2,.8,.2,1) both}@keyframes dsp-card-enter{from{opacity:0;transform:translateY(6px) scale(.995)}to{opacity:1;transform:translateY(0) scale(1)}}@keyframes dsp-body-open{from{opacity:0;transform:translateY(-5px) scaleY(.985)}to{opacity:1;transform:translateY(0) scaleY(1)}}@media (prefers-reduced-motion:reduce){.dsp-card,.dsp-body{animation:none}.dsp-chevron,.dsp-card,.dsp-toggle-track,.dsp-toggle-track:after,.dsp-segment-button{transition:none}}";
+				settingsStyle.textContent += ".VOzbGW_overlay{animation:dsp-settings-overlay-in .2s ease-out both}.VOzbGW_mask{animation:dsp-settings-mask-in .2s ease-out both}.VOzbGW_panel{transform-origin:50% 46%;animation:dsp-settings-panel-in .26s cubic-bezier(.16,1,.3,1) both}@keyframes dsp-settings-overlay-in{from{visibility:hidden}to{visibility:visible}}@keyframes dsp-settings-mask-in{from{opacity:0}to{opacity:1}}@keyframes dsp-settings-panel-in{from{opacity:0;transform:translateY(10px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}@media (prefers-reduced-motion:reduce){.VOzbGW_overlay,.VOzbGW_mask,.VOzbGW_panel{animation:none}}";
+				settingsStyle.textContent += ".dsh-settings-animation-off .VOzbGW_overlay,.dsh-settings-animation-off .VOzbGW_mask,.dsh-settings-animation-off .VOzbGW_panel{animation:none}";
+				document.head.appendChild(settingsStyle);
+			}
+			function Field(props) {
+				return h("div", { className: "dsp-field" }, h("label", { className: "dsp-label", htmlFor: props.id }, props.label), props.children, h("p", { className: "dsp-hint" }, props.hint));
+			}
+			function Toggle(props) {
+				return h("label", { className: "dsp-toggle", htmlFor: props.id },
+					h("input", { id: props.id, type: "checkbox", checked: props.checked, disabled: props.disabled, onChange: props.onChange }),
+					h("span", { className: "dsp-toggle-track", "aria-hidden": "true" }));
+			}
+			function PetSettingsCard() {
+				var openState = useState(false);
+				var open = openState[0], setOpen = openState[1];
+				var state = useState("loading");
+				var status = state[0], setStatus = state[1];
+				var savedState = useState({}), saved = savedState[0], setSaved = savedState[1];
+				var draftState = useState({}), draft = draftState[0], setDraft = draftState[1];
+				var savedRef = useRef(saved);
+				var dirtyRef = useRef(false);
+				savedRef.current = saved;
+				useEffect(function () {
+					var active = true;
+					fetch("/plugins/dsh-deepseek-pet/config", { cache: "no-store" })
+						.then(function (response) { if (!response.ok) throw new Error(String(response.status)); return response.json(); })
+						.then(function (next) { if (active) { savedRef.current = next; dirtyRef.current = false; setSaved(next); setDraft(next); setStatus("ready"); } })
+						.catch(function () { if (active) setStatus("unavailable"); });
+					return function () { active = false; };
+				}, []);
+				useEffect(function () {
+					return function () {
+						if (dirtyRef.current) preview(savedRef.current);
+					};
+				}, []);
+				function preview(next, field) {
+					window.dispatchEvent(new CustomEvent("dsh-pet-config-preview", { detail: { config: next, field: field || "" } }));
+				}
+				function edit(field, next) {
+					setDraft(function (previous) {
+						var updated = Object.assign({}, previous, { [field]: next });
+						preview(updated, field);
+						return updated;
+					});
+				}
+				function save() {
+					setStatus("saving");
+					fetch("/plugins/dsh-deepseek-pet/config", {
+						method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(draft)
+					}).then(function (response) { if (!response.ok) throw new Error(String(response.status)); return response.json(); })
+						.then(function (updated) { savedRef.current = updated; dirtyRef.current = false; setSaved(updated); setDraft(updated); setStatus("ready"); })
+						.catch(function () { setStatus("failed"); });
+				}
+				var disabled = status !== "ready" && status !== "failed";
+				var dirty = JSON.stringify(saved) !== JSON.stringify(draft);
+				dirtyRef.current = dirty;
+				var chevron = h("svg", { width: 14, height: 14, viewBox: "0 0 14 14", className: "dsp-chevron" }, h("path", { d: "M11.85 5.5 7.85 9.5a1.2 1.2 0 0 1-1.7 0l-4-4 .85-.85 4 4 4-4Z", fill: "currentColor" }));
+				function activityChoice(value, label) { return h("button", { key: value, type: "button", className: "dsp-segment-button" + ((draft.activityLevel || "normal") === value ? " dsp-active" : ""), disabled: disabled, "aria-pressed": (draft.activityLevel || "normal") === value, onClick: function () { edit("activityLevel", value); } }, label); }
+				return h("li", { className: "dsp-card" + (open ? " dsp-open" : ""), "data-testid": "dsh-deepseek-pet-settings" },
+					h("button", { type: "button", className: "dsp-header", "aria-expanded": open, onClick: function () { if (open && dirty) { setDraft(saved); preview(saved); setStatus("ready"); } setOpen(!open); } }, h("span", { className: "dsp-head" }, h("span", { className: "dsp-name" }, "小鲸鱼桌宠"), h("span", { className: "dsp-desc" }, "跟随 DSH 真实任务状态变化的页面桌宠。")), dirty ? h("span", { className: "dsp-pending" }, "未保存") : null, chevron),
+					open ? h("div", { className: "dsp-body" },
+						status === "unavailable" || status === "failed" ? h("p", { className: "dsp-error", role: "status" }, status === "failed" ? "保存失败，请重试。" : "设置暂时无法连接到 DSH Host。") : null,
+						h(Field, { id: "dsp-enabled", label: "启用小鲸鱼", hint: "切换后立即预览，保存后正式生效。" }, h(Toggle, { id: "dsp-enabled", checked: draft.enabled !== false, disabled: disabled, onChange: function (event) { edit("enabled", event.target.checked); } })),
+						h(Field, { id: "dsp-scale", label: "角色大小", hint: "当前 " + Math.round((draft.scale || 1) * 100) + "%（范围 70%–140%）" }, h("input", { id: "dsp-scale", className: "dsp-range", type: "range", min: 0.7, max: 1.4, step: 0.05, value: draft.scale || 1, disabled: disabled, onChange: function (event) { edit("scale", Number(event.target.value)); } })),
+						h(Field, { id: "dsp-activity", label: "活跃程度", hint: "选择后大肥鱼会立即回应，保存后正式生效。" }, h("div", { id: "dsp-activity", className: "dsp-segment", role: "group", "aria-label": "活跃程度" }, activityChoice("quiet", "安静"), activityChoice("normal", "标准"), activityChoice("lively", "活泼"))),
+						h(Field, { id: "dsp-motion", label: "减少动态效果", hint: "切换后立即预览，减少走动、循环和晃动。" }, h(Toggle, { id: "dsp-motion", checked: draft.reducedMotion === true, disabled: disabled, onChange: function (event) { edit("reducedMotion", event.target.checked); } })),
+						h(Field, { id: "dsp-settings-animation", label: "设置页打开动画", hint: "只控制 DSH 设置面板的打开过渡，不影响大肥鱼动作。" }, h(Toggle, { id: "dsp-settings-animation", checked: draft.settingsPanelAnimation !== false, disabled: disabled, onChange: function (event) { edit("settingsPanelAnimation", event.target.checked); } })),
+						h(Field, { id: "dsp-subagents", label: "响应子 Agent", hint: "允许子 Agent 状态参与桌宠状态选择。" }, h(Toggle, { id: "dsp-subagents", checked: draft.includeSubagents === true, disabled: disabled, onChange: function (event) { edit("includeSubagents", event.target.checked); } })),
+						h("div", { className: "dsp-footer" }, h("button", { type: "button", className: "dsp-button", disabled: !dirty || status === "saving", onClick: function () { setDraft(saved); preview(saved); setStatus("ready"); } }, "放弃修改"), h("button", { type: "button", className: "dsp-button dsp-save", disabled: !dirty || status === "saving", onClick: save }, status === "saving" ? "保存中" : "保存"))) : null);
+			}
+			ctx.slots.inject("settings.plugin.item", function () {
+				return ctx.slots.register({ name: "settings.plugin.item", id: "dsh-deepseek-pet", order: 30, inject: function () { return {}; } }, PetSettingsCard);
+			});
+		}
+
+		function apply(ctx) {
 			try {
 				// 延迟挂载，等 body 与布局就绪；任何异常都不允许拖垮整个 web 启动。
 				setTimeout(mountPet, 0);
+				registerSettingsCard(ctx);
 			} catch (error) {
 				console.error("[dsh-deepseek-pet] apply failed:", error);
 			}
 		}
 
 		exports.name = "deepseek-pet";
+		exports.inject = ["slots"];
 		exports.apply = apply;
 		return module.exports;
 	}

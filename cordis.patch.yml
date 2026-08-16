@@ -6,3 +6,10 @@
 - insert:
     - id: deepseek-pet
       name: dsh-deepseek-pet
+      config:
+        enabled: true
+        scale: 1
+        activityLevel: normal
+        reducedMotion: false
+        settingsPanelAnimation: true
+        includeSubagents: false
