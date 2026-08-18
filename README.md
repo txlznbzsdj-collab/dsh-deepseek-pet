@@ -4,8 +4,9 @@ DeepSeek 蓝色小鲸鱼桌宠 🐋 —— 浮动在 DSH Web 页面上的拟人�
 
 - 可**拖拽 / 撒娇 / 庆祝 / 摸鱼**的萌系鲸鱼女仆，人设台词（主人 / 大肥鱼 / 吃白饭 / 摸鱼）
 - **模型联动**：Agent 可调用 `pet_say` 工具让桌宠说话；桌宠会同步**对话开始（思考）与结束（庆祝）**
-- 素材风格：蓝色渐变长发、鲸鱼尾巴、深蓝白女仆装（来自
-  [YunYueSama/codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet) 的 DeepSeek 拟人化桌宠素材，MIT 许可）
+- 素材风格：蓝色渐变长发、鲸鱼尾巴、深蓝白女仆装（角色美术来自
+  [YunYueSama/codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet) 的 DeepSeek 拟人化桌宠素材。
+  注意：该仓库的**角色图片不在其 MIT 许可范围内**，但已获原作者授权复用，详见 [ASSET_LICENSE.md](ASSET_LICENSE.md)）
 
 ## 功能（v3）
 

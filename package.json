@@ -15,6 +15,7 @@
     "client.js",
     "cordis.patch.yml",
     "README.md",
+    "ASSET_LICENSE.md",
     "LICENSE"
   ],
   "scripts": {
